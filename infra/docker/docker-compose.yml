@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: devlens_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: devlens
+      POSTGRES_USER: devlens
+      POSTGRES_PASSWORD: devlens
+    ports:
+      - "5434:5432"
+    volumes:
+      - devlens_pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: devlens_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  worker:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+    container_name: devlens_worker
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - ../../apps/backend/.env.docker
+    command: ["python", "-m", "app.worker.worker"]
+
+  api:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+    container_name: devlens_api
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - ../../apps/backend/.env.docker
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    
+volumes:
+  devlens_pgdata:

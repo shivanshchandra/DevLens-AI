@@ -1,0 +1,28 @@
+# Python caches
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Virtual env
+.venv/
+
+# Env files
+.env
+.env.*
+
+# Git
+.git/
+.gitignore
+
+# Tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+dist/
+build/
+
+# Frontend junk if any gets copied
+node_modules/
+.next/
