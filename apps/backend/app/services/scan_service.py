@@ -4,15 +4,23 @@ from sqlalchemy.orm import Session
 from app.models.scan import Scan
 
 
-def create_scan(db: Session, source_type: str, repo_url: str | None, pr_number: int | None) -> Scan:
+def create_scan(
+    db: Session,
+    source_type: str,
+    repo_url: str | None,
+    pr_number: int | None,
+    zip_path: str | None = None,
+) -> Scan:
+
     scan = Scan(
         source_type=source_type,
         repo_url=repo_url,
         pr_number=pr_number,
+        zip_path=zip_path,
         status="queued",
         result_json=None,
         error_message=None,
-    )
+)
     db.add(scan)
     db.commit()
     db.refresh(scan)

@@ -8,7 +8,13 @@ from dotenv import load_dotenv
 config = context.config
 
 # Load .env so DATABASE_URL is available
-load_dotenv()
+env = os.getenv("ENV", "local")
+if env == "local":
+    load_dotenv(".env.local")
+elif env == "docker":
+    load_dotenv(".env.docker")
+else:
+    load_dotenv()
 
 # Override alembic.ini sqlalchemy.url with DATABASE_URL from .env (if present)
 database_url = os.getenv("DATABASE_URL")

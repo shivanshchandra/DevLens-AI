@@ -8,5 +8,5 @@ def get_redis() -> Redis:
     return Redis.from_url(settings.REDIS_URL)
 
 
-def get_queue(name: str = "devlens") -> Queue:
+def get_queue(name: str = "default") -> Queue:
     return Queue(name, connection=get_redis())

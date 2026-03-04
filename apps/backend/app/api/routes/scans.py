@@ -1,12 +1,14 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query
+from pathlib import Path
+import os
+import shutil
+
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.scan import ScanCreate, ScanOut, ScanResultOut
 from app.services.scan_service import create_scan, get_scan, list_scans
-from app.worker.queue import get_queue
-from app.worker.jobs import run_scan_job
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -21,6 +23,47 @@ def create_scan_endpoint(payload: ScanCreate, db: Session = Depends(get_db)):
     )
 
     # NEW: enqueue background scan job (async)
+    from app.worker.queue import get_queue
+    from app.worker.jobs import run_scan_job
+
+    q = get_queue()
+    q.enqueue(run_scan_job, str(scan.id))
+
+    return scan
+
+
+@router.post("/upload-zip", response_model=ScanOut)
+def upload_zip_scan_endpoint(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    # 1) validate zip
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only .zip files are supported")
+
+    # 2) store zip on disk
+    uploads_dir = Path(os.getenv("DEVLENS_UPLOADS_DIR", "./uploads")).resolve()
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    zip_path = uploads_dir / f"{uuid.uuid4()}.zip"
+    with zip_path.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # 3) create scan row (zip)
+    scan = create_scan(
+        db=db,
+        source_type="zip",
+        repo_url=None,
+        pr_number=None,
+        zip_path=str(zip_path),
+    )
+
+    # 4) enqueue job
+    # NEW: enqueue background scan job (async)
+    from app.worker.queue import get_queue
+    from app.worker.jobs import run_scan_job
+
     q = get_queue()
     q.enqueue(run_scan_job, str(scan.id))
 

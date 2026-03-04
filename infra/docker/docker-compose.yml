@@ -33,6 +33,8 @@ services:
     env_file:
       - ../../apps/backend/.env.docker
     command: ["python", "-m", "app.worker.worker"]
+    volumes:
+      - devlens_uploads:/app/uploads
 
   api:
     build:
@@ -48,6 +50,9 @@ services:
     ports:
       - "8000:8000"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    volumes:
+      - devlens_uploads:/app/uploads
     
 volumes:
   devlens_pgdata:
+  devlens_uploads:
