@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 from datetime import datetime
 from app.services.analysis.secret_scanner import scan_for_secrets
-
+from app.services.analysis.dependency_scanner import scan_dependencies
+from app.services.analysis.scoring import compute_scores
 
 # Folders we do NOT want to scan
 DEFAULT_EXCLUDE_DIRS = {
@@ -139,21 +140,27 @@ def analyze_directory(
 
     grade = "A" if health >= 90 else "B" if health >= 80 else "C" if health >= 70 else "D"
 
+    secret_findings = scan_for_secrets(root)
+    dependency_findings = scan_dependencies(root)
+
+    secret_count = len(secret_findings)
+    vuln_count = len(dependency_findings)
+
+    scores = compute_scores(files_scanned, total_loc, secret_count, vuln_count)
+
     result = {
-        "healthScore": health,
-        "grade": grade,
-        "subScores": {
-            "quality": max(0, health - 5),
-            "security": 90,          # placeholder until real security analyzers
-            "maintainability": max(0, health - 10),
-        },
+        "healthScore": scores["healthScore"],
+        "grade": scores["grade"],
+        "subScores": scores["subScores"],
         "metrics": {
             "files": files_scanned,
             "loc": total_loc,
             "languages": languages,
             "complexityHotspots": hotspots,
         },
-        "findings": scan_for_secrets(root),
+        "secret_findings": secret_findings,
+        "dependency_findings": dependency_findings,
+        "findings": secret_findings + dependency_findings,  
         "generatedAt": datetime.utcnow().isoformat() + "Z",
         "meta": {
             "schemaVersion": "v1",
