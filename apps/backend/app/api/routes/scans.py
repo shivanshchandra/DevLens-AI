@@ -20,9 +20,10 @@ def create_scan_endpoint(payload: ScanCreate, db: Session = Depends(get_db)):
         source_type=payload.source_type,
         repo_url=payload.repo_url,
         pr_number=payload.pr_number,
+        ref=payload.ref,
     )
 
-    # NEW: enqueue background scan job (async)
+    # enqueue background scan job (async)
     from app.worker.queue import get_queue
     from app.worker.jobs import run_scan_job
 
@@ -57,10 +58,10 @@ def upload_zip_scan_endpoint(
         repo_url=None,
         pr_number=None,
         zip_path=str(zip_path),
+        ref=None,
     )
 
     # 4) enqueue job
-    # NEW: enqueue background scan job (async)
     from app.worker.queue import get_queue
     from app.worker.jobs import run_scan_job
 

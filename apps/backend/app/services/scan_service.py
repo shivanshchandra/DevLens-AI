@@ -10,17 +10,23 @@ def create_scan(
     repo_url: str | None,
     pr_number: int | None,
     zip_path: str | None = None,
+    ref: str | None = None,
 ) -> Scan:
-
+    """
+    Creates a scan row in DB.
+    - ref is optional (branch/tag/commit) for github/pr scans
+    - zip_path is optional for zip scans
+    """
     scan = Scan(
         source_type=source_type,
         repo_url=repo_url,
         pr_number=pr_number,
         zip_path=zip_path,
+        ref=ref,
         status="queued",
         result_json=None,
         error_message=None,
-)
+    )
     db.add(scan)
     db.commit()
     db.refresh(scan)

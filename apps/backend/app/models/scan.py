@@ -20,6 +20,7 @@ class Scan(Base):
     source_type: Mapped[str] = mapped_column(String(20), nullable=False)  # github | zip | pr
     repo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     pr_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     # ✅ NEW: store uploaded zip path (or later repo workdir path)
     zip_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)

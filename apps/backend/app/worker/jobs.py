@@ -15,7 +15,7 @@ from app.services.analysis.directory_analyzer import analyze_directory
 from app.core.paths import WORKDIR_BASE
 from app.services.analysis.zip_utils import safe_extract_zip
 from app.services.analysis.fs_utils import safe_rmtree
-from app.services.analysis.git_utils import clone_repo  # ✅ NEW
+from app.services.analysis.git_utils import clone_repo, checkout_ref
 
 
 def run_scan_job(scan_id: str) -> None:
@@ -29,7 +29,7 @@ def run_scan_job(scan_id: str) -> None:
     # cleanup targets (best-effort)
     extract_dir: Path | None = None
     zip_file: Path | None = None
-    repo_dir: Path | None = None  # ✅ NEW
+    repo_dir: Path | None = None
 
     try:
         sid = uuid.UUID(scan_id)
@@ -48,16 +48,24 @@ def run_scan_job(scan_id: str) -> None:
             zip_file = Path(scan.zip_path).resolve()
             extract_dir = (WORKDIR_BASE / "extracts" / str(scan.id)).resolve()
 
+            # ensure clean
             safe_rmtree(extract_dir)
             extract_dir.mkdir(parents=True, exist_ok=True)
 
             safe_extract_zip(zip_file, extract_dir)
             result = analyze_directory(extract_dir)
 
+            # include some meta context
+            result.setdefault("meta", {})
+            result["meta"].update({
+                "source_type": "zip",
+                "scan_id": str(scan.id),
+            })
+
             set_scan_result(db, scan, result)
             return
 
-        # 3) GitHub scan ✅ NEW
+        # 3) GitHub scan
         if scan.source_type == "github":
             if not scan.repo_url:
                 raise RuntimeError("repo_url missing for github scan")
@@ -70,14 +78,36 @@ def run_scan_job(scan_id: str) -> None:
             # clone
             clone_repo(scan.repo_url, repo_dir, depth=1)
 
+            # checkout ref if provided (branch/tag/commit)
+            if getattr(scan, "ref", None):
+                checkout_ref(repo_dir, scan.ref)
+
             # analyze cloned repo
             result = analyze_directory(repo_dir)
+
+            # include meta context
+            result.setdefault("meta", {})
+            result["meta"].update({
+                "source_type": "github",
+                "scan_id": str(scan.id),
+                "repo_url": scan.repo_url,
+                "ref": getattr(scan, "ref", None),
+            })
+
             set_scan_result(db, scan, result)
             return
 
         # 4) fallback (dev-only)
         target_dir = Path(os.getenv("DEVLENS_ANALYZE_DIR", Path.cwd())).resolve()
         result = analyze_directory(target_dir)
+
+        result.setdefault("meta", {})
+        result["meta"].update({
+            "source_type": "dev_fallback",
+            "scan_id": str(scan.id),
+            "rootAnalyzed": str(target_dir),
+        })
+
         set_scan_result(db, scan, result)
 
     except Exception as e:
@@ -90,7 +120,7 @@ def run_scan_job(scan_id: str) -> None:
             pass
 
     finally:
-        # ✅ cleanup always runs (best effort)
+        # cleanup always runs (best effort)
         try:
             if extract_dir is not None:
                 safe_rmtree(extract_dir)

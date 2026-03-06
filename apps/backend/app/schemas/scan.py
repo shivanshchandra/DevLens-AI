@@ -4,7 +4,6 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-
 SourceType = Literal["github", "zip", "pr"]
 ScanStatus = Literal["queued", "running", "completed", "failed"]
 
@@ -13,6 +12,7 @@ class ScanCreate(BaseModel):
     source_type: SourceType
     repo_url: Optional[str] = Field(default=None, max_length=500)
     pr_number: Optional[int] = None
+    ref: Optional[str] = Field(default=None, max_length=200)
 
     # Simple validation rules for v1
     # - github/pr needs repo_url
@@ -22,6 +22,7 @@ class ScanCreate(BaseModel):
             raise ValueError("repo_url is required for github/pr scans")
         if self.source_type == "pr" and self.pr_number is None:
             raise ValueError("pr_number is required for pr scans")
+        # ref is optional (no validation yet)
 
 
 class ScanOut(BaseModel):
@@ -29,6 +30,7 @@ class ScanOut(BaseModel):
     source_type: SourceType
     repo_url: Optional[str]
     pr_number: Optional[int]
+    ref: Optional[str]
     status: ScanStatus
     error_message: Optional[str]
     created_at: datetime
