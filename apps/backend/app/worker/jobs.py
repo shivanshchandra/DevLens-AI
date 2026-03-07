@@ -1,5 +1,3 @@
-# apps/backend/app/worker/jobs.py
-
 import os
 import uuid
 from pathlib import Path
@@ -26,7 +24,6 @@ def run_scan_job(scan_id: str) -> None:
     """
     db = SessionLocal()
 
-    # cleanup targets (best-effort)
     extract_dir: Path | None = None
     zip_file: Path | None = None
     repo_dir: Path | None = None
@@ -37,10 +34,9 @@ def run_scan_job(scan_id: str) -> None:
         if not scan:
             return
 
-        # 1) mark running
         set_scan_status(db, scan, "running")
 
-        # 2) ZIP scan
+        # ZIP scan
         if scan.source_type == "zip":
             if not scan.zip_path:
                 raise RuntimeError("zip_path missing for zip scan")
@@ -48,14 +44,12 @@ def run_scan_job(scan_id: str) -> None:
             zip_file = Path(scan.zip_path).resolve()
             extract_dir = (WORKDIR_BASE / "extracts" / str(scan.id)).resolve()
 
-            # ensure clean
             safe_rmtree(extract_dir)
             extract_dir.mkdir(parents=True, exist_ok=True)
 
             safe_extract_zip(zip_file, extract_dir)
             result = analyze_directory(extract_dir)
 
-            # include some meta context
             result.setdefault("meta", {})
             result["meta"].update({
                 "source_type": "zip",
@@ -65,39 +59,35 @@ def run_scan_job(scan_id: str) -> None:
             set_scan_result(db, scan, result)
             return
 
-        # 3) GitHub scan
+        # GitHub scan
         if scan.source_type == "github":
             if not scan.repo_url:
                 raise RuntimeError("repo_url missing for github scan")
 
             repo_dir = (WORKDIR_BASE / "repos" / str(scan.id)).resolve()
-
-            # ensure clean
             safe_rmtree(repo_dir)
 
-            # clone
-            clone_repo(scan.repo_url, repo_dir, depth=1)
+            repo_dir, normalized_repo_url = clone_repo(scan.repo_url, repo_dir, depth=1)
 
-            # checkout ref if provided (branch/tag/commit)
+            normalized_ref = None
             if getattr(scan, "ref", None):
-                checkout_ref(repo_dir, scan.ref)
+                normalized_ref = checkout_ref(repo_dir, scan.ref)
 
-            # analyze cloned repo
             result = analyze_directory(repo_dir)
 
-            # include meta context
             result.setdefault("meta", {})
             result["meta"].update({
                 "source_type": "github",
                 "scan_id": str(scan.id),
-                "repo_url": scan.repo_url,
-                "ref": getattr(scan, "ref", None),
+                "repo_url": normalized_repo_url,
+                "ref": normalized_ref,
+                "rootAnalyzed": str(repo_dir),
             })
 
             set_scan_result(db, scan, result)
             return
 
-        # 4) fallback (dev-only)
+        # dev fallback
         target_dir = Path(os.getenv("DEVLENS_ANALYZE_DIR", Path.cwd())).resolve()
         result = analyze_directory(target_dir)
 
@@ -120,7 +110,6 @@ def run_scan_job(scan_id: str) -> None:
             pass
 
     finally:
-        # cleanup always runs (best effort)
         try:
             if extract_dir is not None:
                 safe_rmtree(extract_dir)

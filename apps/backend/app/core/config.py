@@ -1,5 +1,3 @@
-# apps/backend/app/core/config.py
-
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -27,6 +25,12 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str | None = None
     REDIS_URL: str = "redis://localhost:6379/0"
+
+    # GitHub / git scan settings
+    GITHUB_TOKEN: str | None = None
+    GIT_CLONE_TIMEOUT: int = 300
+    GIT_FETCH_TIMEOUT: int = 300
+    GIT_CHECKOUT_TIMEOUT: int = 120
 
     model_config = SettingsConfigDict(
         env_file=_pick_env_file(),
