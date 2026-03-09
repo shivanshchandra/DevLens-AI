@@ -10,10 +10,12 @@ from app.services.scan_service import (
     set_scan_status,
 )
 from app.services.analysis.directory_analyzer import analyze_directory
+from app.services.analysis.pr_analyzer import analyze_pull_request
+from app.services.analysis.github_api import get_pull_request_context
 from app.core.paths import WORKDIR_BASE
 from app.services.analysis.zip_utils import safe_extract_zip
 from app.services.analysis.fs_utils import safe_rmtree
-from app.services.analysis.git_utils import clone_repo, checkout_ref
+from app.services.analysis.git_utils import clone_repo, checkout_ref, checkout_pull_request_head
 
 
 def run_scan_job(scan_id: str) -> None:
@@ -51,15 +53,17 @@ def run_scan_job(scan_id: str) -> None:
             result = analyze_directory(extract_dir)
 
             result.setdefault("meta", {})
-            result["meta"].update({
-                "source_type": "zip",
-                "scan_id": str(scan.id),
-            })
+            result["meta"].update(
+                {
+                    "source_type": "zip",
+                    "scan_id": str(scan.id),
+                }
+            )
 
             set_scan_result(db, scan, result)
             return
 
-        # GitHub scan
+        # Full GitHub repo scan
         if scan.source_type == "github":
             if not scan.repo_url:
                 raise RuntimeError("repo_url missing for github scan")
@@ -76,13 +80,59 @@ def run_scan_job(scan_id: str) -> None:
             result = analyze_directory(repo_dir)
 
             result.setdefault("meta", {})
-            result["meta"].update({
-                "source_type": "github",
-                "scan_id": str(scan.id),
-                "repo_url": normalized_repo_url,
-                "ref": normalized_ref,
-                "rootAnalyzed": str(repo_dir),
-            })
+            result["meta"].update(
+                {
+                    "source_type": "github",
+                    "scan_id": str(scan.id),
+                    "repo_url": normalized_repo_url,
+                    "ref": normalized_ref,
+                    "rootAnalyzed": str(repo_dir),
+                }
+            )
+
+            set_scan_result(db, scan, result)
+            return
+
+        # PR diff-only scan
+        if scan.source_type == "pr":
+            if not scan.repo_url:
+                raise RuntimeError("repo_url missing for pr scan")
+            if scan.pr_number is None:
+                raise RuntimeError("pr_number missing for pr scan")
+
+            # 1) fetch PR metadata/files from GitHub API
+            pr_context = get_pull_request_context(scan.repo_url, scan.pr_number)
+
+            # 2) clone repository
+            repo_dir = (WORKDIR_BASE / "repos" / str(scan.id)).resolve()
+            safe_rmtree(repo_dir)
+
+            repo_dir, normalized_repo_url = clone_repo(scan.repo_url, repo_dir, depth=1)
+
+            # 3) checkout PR head using GitHub synthetic PR ref
+            checked_out_ref = checkout_pull_request_head(repo_dir, scan.pr_number)
+
+            # 4) analyze only changed files from the PR
+            result = analyze_pull_request(repo_dir, pr_context)
+
+            # 5) enrich meta
+            result.setdefault("meta", {})
+            result["meta"].update(
+                {
+                    "source_type": "pr",
+                    "scan_id": str(scan.id),
+                    "repo_url": normalized_repo_url,
+                    "ref": checked_out_ref,
+                    "pr_number": scan.pr_number,
+                    "rootAnalyzed": str(repo_dir),
+                    "html_url": pr_context.get("html_url"),
+                    "base_ref": pr_context.get("base_ref"),
+                    "head_ref": pr_context.get("head_ref"),
+                    "base_sha": pr_context.get("base_sha"),
+                    "head_sha": pr_context.get("head_sha"),
+                    "changed_files_count": pr_context.get("changed_files_count"),
+                }
+            )
 
             set_scan_result(db, scan, result)
             return
@@ -92,11 +142,13 @@ def run_scan_job(scan_id: str) -> None:
         result = analyze_directory(target_dir)
 
         result.setdefault("meta", {})
-        result["meta"].update({
-            "source_type": "dev_fallback",
-            "scan_id": str(scan.id),
-            "rootAnalyzed": str(target_dir),
-        })
+        result["meta"].update(
+            {
+                "source_type": "dev_fallback",
+                "scan_id": str(scan.id),
+                "rootAnalyzed": str(target_dir),
+            }
+        )
 
         set_scan_result(db, scan, result)
 

@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     GIT_CLONE_TIMEOUT: int = 300
     GIT_FETCH_TIMEOUT: int = 300
     GIT_CHECKOUT_TIMEOUT: int = 120
+    GITHUB_API_TIMEOUT: int = 20
 
     model_config = SettingsConfigDict(
         env_file=_pick_env_file(),

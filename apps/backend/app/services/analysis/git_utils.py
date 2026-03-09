@@ -75,9 +75,7 @@ def normalize_github_repo_url(repo_url: str) -> str:
         repo = repo[:-4]
 
     if not repo:
-        raise InvalidRepoUrlError(
-            "Invalid repository URL. Repository name is missing."
-        )
+        raise InvalidRepoUrlError("Invalid repository URL. Repository name is missing.")
 
     return f"https://github.com/{owner}/{repo}"
 
@@ -100,9 +98,6 @@ def normalize_ref(ref: str | None) -> str | None:
 
 
 def _build_clone_url(repo_url: str) -> str:
-    """
-    If GITHUB_TOKEN is configured, inject it into the clone URL so private repos can work.
-    """
     token = settings.GITHUB_TOKEN
     if not token:
         return repo_url
@@ -135,21 +130,15 @@ def _classify_git_error(message: str, cmd: list[str], ref: str | None = None) ->
         )
 
     if "fatal: couldn't find remote ref" in msg:
-        return GitRefError(f"Invalid ref: '{ref}' was not found in the repository.")
+        raise GitRefError(f"Invalid ref: '{ref}' was not found in the repository.")
 
     if "pathspec" in msg and "did not match any file(s) known to git" in msg:
-        return GitRefError(f"Invalid ref: '{ref}' was not found in the repository.")
+        raise GitRefError(f"Invalid ref: '{ref}' was not found in the repository.")
 
     return GitError(f"Git command failed: {cmd_name} - {message[:300]}")
 
 
 def _run_git(cmd: list[str], cwd: Path | None = None, timeout: int = 300, ref: str | None = None) -> None:
-    """
-    Run a git command safely:
-    - non-interactive
-    - output captured
-    - classified error handling
-    """
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
 
@@ -206,8 +195,8 @@ def clone_repo(repo_url: str, dest_dir: str | Path, depth: int = 1) -> tuple[Pat
 
 def checkout_ref(repo_dir: str | Path, ref: str, depth: int = 50) -> str:
     """
-    Checkout a branch/tag/commit in an already cloned repo.
-    Returns the normalized ref string.
+    Fetch a ref from origin and checkout FETCH_HEAD in detached mode.
+    This is more reliable than checking out the ref name directly.
     """
     repo = Path(repo_dir).resolve()
     clean_ref = normalize_ref(ref)
@@ -222,10 +211,47 @@ def checkout_ref(repo_dir: str | Path, ref: str, depth: int = 50) -> str:
     )
 
     _run_git(
-        ["git", "checkout", clean_ref],
+        ["git", "checkout", "--detach", "FETCH_HEAD"],
         cwd=repo,
         timeout=settings.GIT_CHECKOUT_TIMEOUT,
         ref=clean_ref,
     )
 
     return clean_ref
+
+
+def checkout_pull_request_head(repo_dir: str | Path, pr_number: int, depth: int = 50) -> str:
+    """
+    Fetch and checkout GitHub's synthetic PR head ref.
+
+    This works for public PRs, including many fork-based PRs:
+      refs/pull/<number>/head
+    """
+    repo = Path(repo_dir).resolve()
+    if pr_number <= 0:
+        raise GitRefError("Invalid pull request number.")
+
+    local_ref = f"refs/remotes/origin/devlens-pr-{pr_number}"
+
+    _run_git(
+        [
+            "git",
+            "fetch",
+            "--depth",
+            str(depth),
+            "origin",
+            f"pull/{pr_number}/head:{local_ref}",
+        ],
+        cwd=repo,
+        timeout=settings.GIT_FETCH_TIMEOUT,
+        ref=f"pull/{pr_number}/head",
+    )
+
+    _run_git(
+        ["git", "checkout", "--detach", local_ref],
+        cwd=repo,
+        timeout=settings.GIT_CHECKOUT_TIMEOUT,
+        ref=f"pull/{pr_number}/head",
+    )
+
+    return f"pull/{pr_number}/head"
