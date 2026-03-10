@@ -3,12 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
-import re
 
 from app.services.analysis.directory_analyzer import EXT_TO_LANG, TEXT_EXT_ALLOWLIST, _safe_read_lines
 from app.services.analysis.secret_scanner import SECRET_RULES
 from app.services.analysis.dependency_scanner import scan_dependencies
 from app.services.analysis.scoring import compute_scores
+from app.services.analysis.complexity_analyzer import analyze_complexity
+from app.services.analysis.risk_engine import run_risk_engine
+from app.services.analysis.pr_summary import build_pr_summary
 
 
 DEPENDENCY_FILE_NAMES = {"requirements.txt", "package.json"}
@@ -50,6 +52,22 @@ def _scan_changed_files_for_secrets(root: Path, changed_files: list[str], max_by
     return findings
 
 
+def _risk_severity_counts(risk_findings: list[dict]) -> dict[str, int]:
+    counts = {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+    }
+
+    for item in risk_findings:
+        severity = str(item.get("severity") or "").lower()
+        if severity in counts:
+            counts[severity] += 1
+
+    return counts
+
+
 def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
     """
     Analyze only files changed in a pull request.
@@ -71,7 +89,6 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
         if not rel:
             continue
 
-        # Removed files do not exist in checked-out PR head
         if status == "removed":
             skipped_removed_files += 1
             continue
@@ -116,11 +133,6 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
         if s > 100 and languages:
             languages[0]["percent"] -= (s - 100)
 
-    hotspots = [
-        {"filePath": fp, "score": min(100, int(loc / max(1, total_loc) * 5000))}
-        for fp, loc in sorted(file_locs, key=lambda x: x[1], reverse=True)[:5]
-    ]
-
     secret_findings = _scan_changed_files_for_secrets(root, changed_file_paths)
 
     changed_dependency_files = {
@@ -128,16 +140,31 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
     }
     dependency_findings = scan_dependencies(root) if changed_dependency_files else []
 
+    complexity_findings, complexity_hotspots = analyze_complexity(root)
+
+    risk_result = run_risk_engine(root, include_paths=changed_file_paths)
+    risk_findings = risk_result.get("risk_findings", [])
+    risk_summary = risk_result.get("risk_summary", {})
+
+    risk_counts = _risk_severity_counts(risk_findings)
+
     scores = compute_scores(
         files=files_scanned,
         loc=total_loc,
         secret_count=len(secret_findings),
         vuln_count=len(dependency_findings),
+        risk_count=len(risk_findings),
+        critical_risk_count=risk_counts["critical"],
+        high_risk_count=risk_counts["high"],
+        medium_risk_count=risk_counts["medium"],
     )
 
     total_additions = sum(int(item.get("additions", 0) or 0) for item in pr_files)
     total_deletions = sum(int(item.get("deletions", 0) or 0) for item in pr_files)
     total_changes = sum(int(item.get("changes", 0) or 0) for item in pr_files)
+
+    combined_findings = secret_findings + dependency_findings + complexity_findings + risk_findings
+    pr_summary = build_pr_summary(pr_context, combined_findings)
 
     result = {
         "healthScore": scores["healthScore"],
@@ -147,11 +174,14 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
             "files": files_scanned,
             "loc": total_loc,
             "languages": languages,
-            "complexityHotspots": hotspots,
+            "complexityHotspots": complexity_hotspots,
         },
-        "findings": secret_findings + dependency_findings,
+        "findings": combined_findings,
         "secret_findings": secret_findings,
         "dependency_findings": dependency_findings,
+        "risk_findings": risk_findings,
+        "risk_summary": risk_summary,
+        "pr_summary": pr_summary,
         "generatedAt": datetime.utcnow().isoformat() + "Z",
         "meta": {
             "schemaVersion": "v1",
