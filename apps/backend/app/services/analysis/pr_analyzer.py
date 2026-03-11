@@ -11,6 +11,12 @@ from app.services.analysis.scoring import compute_scores
 from app.services.analysis.complexity_analyzer import analyze_complexity
 from app.services.analysis.risk_engine import run_risk_engine
 from app.services.analysis.pr_summary import build_pr_summary
+from app.services.analysis.fix_suggestions import build_fix_suggestions
+from app.services.analysis.refactor_priority import build_refactor_priority
+from app.services.analysis.file_feature_extractor import (
+    build_file_features,
+    summarize_file_features,
+)
 
 
 DEPENDENCY_FILE_NAMES = {"requirements.txt", "package.json"}
@@ -108,7 +114,8 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
     files_scanned = 0
     total_loc = 0
     loc_by_lang: Dict[str, int] = {}
-    file_locs: List[Tuple[str, int]] = []
+    file_locs: Dict[str, int] = {}
+    file_locs_list: List[Tuple[str, int]] = []
 
     for rel_path in changed_file_paths:
         file_path = (root / rel_path).resolve()
@@ -121,7 +128,8 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
 
         lang = EXT_TO_LANG.get(file_path.suffix.lower(), "Other")
         loc_by_lang[lang] = loc_by_lang.get(lang, 0) + loc
-        file_locs.append((rel_path, loc))
+        file_locs[rel_path] = loc
+        file_locs_list.append((rel_path, loc))
 
     languages = []
     if total_loc > 0:
@@ -164,7 +172,23 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
     total_changes = sum(int(item.get("changes", 0) or 0) for item in pr_files)
 
     combined_findings = secret_findings + dependency_findings + complexity_findings + risk_findings
+
+    file_features = build_file_features(
+        root_dir=root,
+        findings=combined_findings,
+        complexity_hotspots=complexity_hotspots,
+        include_paths=changed_file_paths,
+        max_files=30_000,
+    )
+    file_feature_summary = summarize_file_features(file_features)
+
     pr_summary = build_pr_summary(pr_context, combined_findings)
+    fix_suggestions = build_fix_suggestions(combined_findings)
+    top_files_to_fix = build_refactor_priority(
+        findings=combined_findings,
+        complexity_hotspots=complexity_hotspots,
+        file_locs=file_locs,
+    )
 
     result = {
         "healthScore": scores["healthScore"],
@@ -182,9 +206,13 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
         "risk_findings": risk_findings,
         "risk_summary": risk_summary,
         "pr_summary": pr_summary,
+        "fix_suggestions": fix_suggestions,
+        "top_files_to_fix": top_files_to_fix,
+        "file_features": file_features,
+        "file_feature_summary": file_feature_summary,
         "generatedAt": datetime.utcnow().isoformat() + "Z",
         "meta": {
-            "schemaVersion": "v1",
+            "schemaVersion": "v2",
             "analysisScope": "pull_request_changed_files",
             "rootAnalyzed": str(root),
             "pr_number": pr_context.get("number"),

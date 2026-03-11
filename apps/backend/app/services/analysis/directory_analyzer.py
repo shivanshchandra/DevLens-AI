@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict
 from datetime import datetime
 
 from app.services.analysis.secret_scanner import scan_for_secrets
@@ -9,6 +9,12 @@ from app.services.analysis.dependency_scanner import scan_dependencies
 from app.services.analysis.scoring import compute_scores
 from app.services.analysis.complexity_analyzer import analyze_complexity
 from app.services.analysis.risk_engine import run_risk_engine
+from app.services.analysis.fix_suggestions import build_fix_suggestions
+from app.services.analysis.refactor_priority import build_refactor_priority
+from app.services.analysis.file_feature_extractor import (
+    build_file_features,
+    summarize_file_features,
+)
 
 
 DEFAULT_EXCLUDE_DIRS = {
@@ -103,6 +109,7 @@ def analyze_directory(
     files_scanned = 0
     total_loc = 0
     loc_by_lang: Dict[str, int] = {}
+    file_locs: Dict[str, int] = {}
 
     for p in root.rglob("*"):
 
@@ -130,6 +137,9 @@ def analyze_directory(
         lang = EXT_TO_LANG.get(ext, "Other")
         loc_by_lang[lang] = loc_by_lang.get(lang, 0) + loc
 
+        rel_path = str(p.relative_to(root)).replace("\\", "/")
+        file_locs[rel_path] = loc
+
     languages = []
 
     if total_loc > 0:
@@ -155,6 +165,23 @@ def analyze_directory(
         + dependency_findings
         + complexity_findings
         + risk_findings
+    )
+
+    file_features = build_file_features(
+        root_dir=root,
+        findings=findings,
+        complexity_hotspots=complexity_hotspots,
+        include_paths=None,
+        exclude_dirs=exclude_dirs,
+        max_files=max_files,
+    )
+    file_feature_summary = summarize_file_features(file_features)
+
+    fix_suggestions = build_fix_suggestions(findings)
+    top_files_to_fix = build_refactor_priority(
+        findings=findings,
+        complexity_hotspots=complexity_hotspots,
+        file_locs=file_locs,
     )
 
     risk_counts = _risk_severity_counts(risk_findings)
@@ -184,10 +211,14 @@ def analyze_directory(
         "dependency_findings": dependency_findings,
         "risk_findings": risk_findings,
         "risk_summary": risk_summary,
+        "fix_suggestions": fix_suggestions,
+        "top_files_to_fix": top_files_to_fix,
+        "file_features": file_features,
+        "file_feature_summary": file_feature_summary,
         "findings": findings,
         "generatedAt": datetime.utcnow().isoformat() + "Z",
         "meta": {
-            "schemaVersion": "v1",
+            "schemaVersion": "v2",
             "rootAnalyzed": str(root),
         },
     }
