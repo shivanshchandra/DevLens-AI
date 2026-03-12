@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict
 
-from app.services.analysis.directory_analyzer import EXT_TO_LANG, TEXT_EXT_ALLOWLIST, _safe_read_lines
+from app.services.analysis.analysis_constants import (
+    EXT_TO_LANG,
+    TEXT_EXT_ALLOWLIST,
+)
 from app.services.analysis.secret_scanner import SECRET_RULES
 from app.services.analysis.dependency_scanner import scan_dependencies
 from app.services.analysis.scoring import compute_scores
@@ -17,9 +19,23 @@ from app.services.analysis.file_feature_extractor import (
     build_file_features,
     summarize_file_features,
 )
+from app.services.analysis.result_builder import build_result_payload
 
 
 DEPENDENCY_FILE_NAMES = {"requirements.txt", "package.json"}
+
+
+def _safe_read_lines(file_path: Path, max_bytes: int = 2_000_000) -> int:
+    try:
+        size = file_path.stat().st_size
+        if size > max_bytes:
+            return 0
+
+        with file_path.open("r", encoding="utf-8", errors="ignore") as f:
+            return sum(1 for _ in f)
+
+    except Exception:
+        return 0
 
 
 def _scan_changed_files_for_secrets(root: Path, changed_files: list[str], max_bytes: int = 1_000_000) -> list[dict]:
@@ -75,10 +91,6 @@ def _risk_severity_counts(risk_findings: list[dict]) -> dict[str, int]:
 
 
 def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
-    """
-    Analyze only files changed in a pull request.
-    Returns frontend-compatible result JSON.
-    """
     root = Path(root_dir).resolve()
     pr_files = pr_context.get("files") or []
 
@@ -115,7 +127,6 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
     total_loc = 0
     loc_by_lang: Dict[str, int] = {}
     file_locs: Dict[str, int] = {}
-    file_locs_list: List[Tuple[str, int]] = []
 
     for rel_path in changed_file_paths:
         file_path = (root / rel_path).resolve()
@@ -129,7 +140,6 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
         lang = EXT_TO_LANG.get(file_path.suffix.lower(), "Other")
         loc_by_lang[lang] = loc_by_lang.get(lang, 0) + loc
         file_locs[rel_path] = loc
-        file_locs_list.append((rel_path, loc))
 
     languages = []
     if total_loc > 0:
@@ -137,9 +147,9 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
             pct = round((loc / total_loc) * 100)
             languages.append({"name": name, "percent": pct})
 
-        s = sum(x["percent"] for x in languages)
-        if s > 100 and languages:
-            languages[0]["percent"] -= (s - 100)
+        pct_sum = sum(x["percent"] for x in languages)
+        if pct_sum > 100 and languages:
+            languages[0]["percent"] -= (pct_sum - 100)
 
     secret_findings = _scan_changed_files_for_secrets(root, changed_file_paths)
 
@@ -171,72 +181,73 @@ def analyze_pull_request(root_dir: str | Path, pr_context: dict) -> dict:
     total_deletions = sum(int(item.get("deletions", 0) or 0) for item in pr_files)
     total_changes = sum(int(item.get("changes", 0) or 0) for item in pr_files)
 
-    combined_findings = secret_findings + dependency_findings + complexity_findings + risk_findings
+    findings = secret_findings + dependency_findings + complexity_findings + risk_findings
 
     file_features = build_file_features(
         root_dir=root,
-        findings=combined_findings,
+        findings=findings,
         complexity_hotspots=complexity_hotspots,
         include_paths=changed_file_paths,
         max_files=30_000,
     )
     file_feature_summary = summarize_file_features(file_features)
 
-    pr_summary = build_pr_summary(pr_context, combined_findings)
-    fix_suggestions = build_fix_suggestions(combined_findings)
+    pr_summary = build_pr_summary(pr_context, findings)
+    fix_suggestions = build_fix_suggestions(findings)
     top_files_to_fix = build_refactor_priority(
-        findings=combined_findings,
+        findings=findings,
         complexity_hotspots=complexity_hotspots,
         file_locs=file_locs,
     )
 
-    result = {
-        "healthScore": scores["healthScore"],
-        "grade": scores["grade"],
-        "subScores": scores["subScores"],
-        "metrics": {
-            "files": files_scanned,
-            "loc": total_loc,
-            "languages": languages,
-            "complexityHotspots": complexity_hotspots,
+    metrics = {
+        "files": files_scanned,
+        "loc": total_loc,
+        "languages": languages,
+    }
+
+    meta = {
+        "rootAnalyzed": str(root),
+        "analysisScope": "pull_request_changed_files",
+        "pr_number": pr_context.get("number"),
+        "pr_title": pr_context.get("title"),
+        "pr_state": pr_context.get("state"),
+        "pr_url": pr_context.get("html_url"),
+        "base_ref": pr_context.get("base_ref"),
+        "head_ref": pr_context.get("head_ref"),
+        "base_sha": pr_context.get("base_sha"),
+        "head_sha": pr_context.get("head_sha"),
+        "changed_files_total": total_changed_files,
+        "changed_files_analyzed": files_scanned,
+        "changed_files_selected": len(changed_file_paths),
+        "diff_stats": {
+            "additions": total_additions,
+            "deletions": total_deletions,
+            "changes": total_changes,
         },
-        "findings": combined_findings,
-        "secret_findings": secret_findings,
-        "dependency_findings": dependency_findings,
-        "risk_findings": risk_findings,
-        "risk_summary": risk_summary,
-        "pr_summary": pr_summary,
-        "fix_suggestions": fix_suggestions,
-        "top_files_to_fix": top_files_to_fix,
-        "file_features": file_features,
-        "file_feature_summary": file_feature_summary,
-        "generatedAt": datetime.utcnow().isoformat() + "Z",
-        "meta": {
-            "schemaVersion": "v2",
-            "analysisScope": "pull_request_changed_files",
-            "rootAnalyzed": str(root),
-            "pr_number": pr_context.get("number"),
-            "pr_title": pr_context.get("title"),
-            "pr_state": pr_context.get("state"),
-            "pr_url": pr_context.get("html_url"),
-            "base_ref": pr_context.get("base_ref"),
-            "head_ref": pr_context.get("head_ref"),
-            "base_sha": pr_context.get("base_sha"),
-            "head_sha": pr_context.get("head_sha"),
-            "changed_files_total": total_changed_files,
-            "changed_files_analyzed": files_scanned,
-            "changed_files_selected": len(changed_file_paths),
-            "diff_stats": {
-                "additions": total_additions,
-                "deletions": total_deletions,
-                "changes": total_changes,
-            },
-            "skipped": {
-                "removed_files": skipped_removed_files,
-                "non_text_files": skipped_non_text_files,
-                "missing_files": skipped_missing_files,
-            },
+        "skipped": {
+            "removed_files": skipped_removed_files,
+            "non_text_files": skipped_non_text_files,
+            "missing_files": skipped_missing_files,
         },
     }
 
-    return result
+    return build_result_payload(
+        scan_type="pr",
+        scores=scores,
+        metrics=metrics,
+        findings=findings,
+        secret_findings=secret_findings,
+        dependency_findings=dependency_findings,
+        complexity_findings=complexity_findings,
+        complexity_hotspots=complexity_hotspots,
+        risk_findings=risk_findings,
+        risk_summary=risk_summary,
+        fix_suggestions=fix_suggestions,
+        top_files_to_fix=top_files_to_fix,
+        file_features=file_features,
+        file_feature_summary=file_feature_summary,
+        pr_summary=pr_summary,
+        meta=meta,
+    )
+

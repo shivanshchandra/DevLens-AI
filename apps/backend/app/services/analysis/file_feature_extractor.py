@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
-from app.services.analysis.directory_analyzer import (
+from app.services.analysis.analysis_constants import (
+    DEFAULT_EXCLUDE_DIRS,
     EXT_TO_LANG,
     TEXT_EXT_ALLOWLIST,
-    DEFAULT_EXCLUDE_DIRS,
 )
 
 
@@ -164,34 +164,6 @@ def build_file_features(
     exclude_dirs: set[str] | None = None,
     max_files: int = 30_000,
 ) -> list[dict]:
-    """
-    Build per-file structured features without changing existing scan behavior.
-
-    Output example:
-    [
-        {
-            "filePath": "...",
-            "language": "Python",
-            "extension": ".py",
-            "loc": 120,
-            "blankLines": 18,
-            "commentLines": 7,
-            "sizeBytes": 4281,
-            "findingCount": 3,
-            "severityCounts": {...},
-            "secretCount": 1,
-            "dependencyIssueCount": 0,
-            "riskCount": 1,
-            "complexityFindingCount": 1,
-            "hotspotScore": 70,
-            "hotspotLevel": "medium",
-            "isDependencyFile": false,
-            "isConfigFile": false,
-            "isTestFile": false,
-            "changedInPr": true/false
-        }
-    ]
-    """
     root = Path(root_dir).resolve()
     exclude_dirs = exclude_dirs or set(DEFAULT_EXCLUDE_DIRS)
 
@@ -207,13 +179,13 @@ def build_file_features(
 
     include_set = None
     if include_paths is not None:
-        include_set = {
-            str((root / rel).resolve().relative_to(root)).replace("\\", "/")
-            for rel in include_paths
-            if rel
-            and (root / rel).resolve().exists()
-            and str((root / rel).resolve()).startswith(str(root))
-        }
+        include_set = set()
+        for rel in include_paths:
+            if not rel:
+                continue
+            p = (root / rel).resolve()
+            if p.exists() and str(p).startswith(str(root)):
+                include_set.add(str(p.relative_to(root)).replace("\\", "/"))
 
     results: list[dict] = []
 

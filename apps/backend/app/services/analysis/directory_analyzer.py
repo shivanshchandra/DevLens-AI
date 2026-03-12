@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict
-from datetime import datetime
 
+from app.services.analysis.analysis_constants import (
+    DEFAULT_EXCLUDE_DIRS,
+    EXT_TO_LANG,
+    TEXT_EXT_ALLOWLIST,
+)
 from app.services.analysis.secret_scanner import scan_for_secrets
 from app.services.analysis.dependency_scanner import scan_dependencies
 from app.services.analysis.scoring import compute_scores
@@ -15,52 +19,7 @@ from app.services.analysis.file_feature_extractor import (
     build_file_features,
     summarize_file_features,
 )
-
-
-DEFAULT_EXCLUDE_DIRS = {
-    ".git",
-    "node_modules",
-    ".next",
-    "dist",
-    "build",
-    "__pycache__",
-    ".venv",
-    "venv",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".turbo",
-}
-
-
-EXT_TO_LANG = {
-    ".py": "Python",
-    ".ts": "TypeScript",
-    ".tsx": "TypeScript",
-    ".js": "JavaScript",
-    ".jsx": "JavaScript",
-    ".md": "Markdown",
-    ".json": "JSON",
-    ".yml": "YAML",
-    ".yaml": "YAML",
-    ".html": "HTML",
-    ".css": "CSS",
-    ".go": "Go",
-    ".java": "Java",
-    ".rs": "Rust",
-    ".cpp": "C++",
-    ".c": "C",
-    ".sh": "Shell",
-}
-
-
-TEXT_EXT_ALLOWLIST = set(EXT_TO_LANG.keys()) | {
-    ".txt",
-    ".toml",
-    ".ini",
-    ".env",
-    ".example",
-    ".cfg",
-}
+from app.services.analysis.result_builder import build_result_payload
 
 
 def _is_excluded(path: Path, exclude_dirs: set[str]) -> bool:
@@ -102,7 +61,6 @@ def analyze_directory(
     exclude_dirs: set[str] | None = None,
     max_files: int = 30_000,
 ) -> dict:
-
     root = Path(root_dir).resolve()
     exclude_dirs = exclude_dirs or set(DEFAULT_EXCLUDE_DIRS)
 
@@ -112,7 +70,6 @@ def analyze_directory(
     file_locs: Dict[str, int] = {}
 
     for p in root.rglob("*"):
-
         if files_scanned >= max_files:
             break
 
@@ -123,7 +80,6 @@ def analyze_directory(
             continue
 
         ext = p.suffix.lower()
-
         if ext not in TEXT_EXT_ALLOWLIST:
             continue
 
@@ -141,16 +97,14 @@ def analyze_directory(
         file_locs[rel_path] = loc
 
     languages = []
-
     if total_loc > 0:
         for name, loc in sorted(loc_by_lang.items(), key=lambda x: x[1], reverse=True):
             pct = round((loc / total_loc) * 100)
             languages.append({"name": name, "percent": pct})
 
-        s = sum(x["percent"] for x in languages)
-
-        if s > 100 and languages:
-            languages[0]["percent"] -= (s - 100)
+        pct_sum = sum(x["percent"] for x in languages)
+        if pct_sum > 100 and languages:
+            languages[0]["percent"] -= (pct_sum - 100)
 
     secret_findings = scan_for_secrets(root)
     dependency_findings = scan_dependencies(root)
@@ -197,30 +151,32 @@ def analyze_directory(
         medium_risk_count=risk_counts["medium"],
     )
 
-    result = {
-        "healthScore": scores["healthScore"],
-        "grade": scores["grade"],
-        "subScores": scores["subScores"],
-        "metrics": {
-            "files": files_scanned,
-            "loc": total_loc,
-            "languages": languages,
-            "complexityHotspots": complexity_hotspots,
-        },
-        "secret_findings": secret_findings,
-        "dependency_findings": dependency_findings,
-        "risk_findings": risk_findings,
-        "risk_summary": risk_summary,
-        "fix_suggestions": fix_suggestions,
-        "top_files_to_fix": top_files_to_fix,
-        "file_features": file_features,
-        "file_feature_summary": file_feature_summary,
-        "findings": findings,
-        "generatedAt": datetime.utcnow().isoformat() + "Z",
-        "meta": {
-            "schemaVersion": "v2",
-            "rootAnalyzed": str(root),
-        },
+    metrics = {
+        "files": files_scanned,
+        "loc": total_loc,
+        "languages": languages,
     }
 
-    return result
+    meta = {
+        "rootAnalyzed": str(root),
+        "analysisScope": "repository",
+    }
+
+    return build_result_payload(
+        scan_type="github_or_zip",
+        scores=scores,
+        metrics=metrics,
+        findings=findings,
+        secret_findings=secret_findings,
+        dependency_findings=dependency_findings,
+        complexity_findings=complexity_findings,
+        complexity_hotspots=complexity_hotspots,
+        risk_findings=risk_findings,
+        risk_summary=risk_summary,
+        fix_suggestions=fix_suggestions,
+        top_files_to_fix=top_files_to_fix,
+        file_features=file_features,
+        file_feature_summary=file_feature_summary,
+        meta=meta,
+    )
+
