@@ -26,6 +26,7 @@ def build_result_payload(
     file_feature_summary: dict,
     meta: dict | None = None,
     pr_summary: dict | None = None,
+    ml: dict | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """
@@ -64,6 +65,15 @@ def build_result_payload(
 
     if pr_summary is not None:
         summaries["pr"] = pr_summary
+
+    if ml is not None:
+        summaries["ml"] = {
+            "predictedRiskLevel": ml.get("summary", {}).get("predictedRiskLevel"),
+            "predictedRiskScore": ml.get("summary", {}).get("predictedRiskScore"),
+            "predictedDebtLevel": ml.get("summary", {}).get("predictedDebtLevel"),
+            "predictedDebtScore": ml.get("summary", {}).get("predictedDebtScore"),
+            "version": ml.get("version"),
+        }
 
     finding_groups = {
         "all": findings,
@@ -108,5 +118,8 @@ def build_result_payload(
 
     if pr_summary is not None:
         result["pr_summary"] = pr_summary
+
+    if ml is not None:
+        result["ml"] = ml
 
     return result

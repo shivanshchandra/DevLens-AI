@@ -16,6 +16,21 @@ from app.core.paths import WORKDIR_BASE
 from app.services.analysis.zip_utils import safe_extract_zip
 from app.services.analysis.fs_utils import safe_rmtree
 from app.services.analysis.git_utils import clone_repo, checkout_ref, checkout_pull_request_head
+from app.services.ml.inference import run_ml_inference
+
+
+def _attach_ml_result(result: dict) -> dict:
+    """
+    Attach ML inference in a fail-open way.
+
+    If ML fails, the core scan result should still be saved.
+    """
+    try:
+        result["ml"] = run_ml_inference(result)
+    except Exception as ml_error:
+        result.setdefault("meta", {})
+        result["meta"]["mlError"] = str(ml_error)[:300]
+    return result
 
 
 def run_scan_job(scan_id: str) -> None:
@@ -50,6 +65,7 @@ def run_scan_job(scan_id: str) -> None:
             extract_dir.mkdir(parents=True, exist_ok=True)
 
             safe_extract_zip(zip_file, extract_dir)
+
             result = analyze_directory(extract_dir)
 
             result.setdefault("meta", {})
@@ -59,6 +75,8 @@ def run_scan_job(scan_id: str) -> None:
                     "scan_id": str(scan.id),
                 }
             )
+
+            result = _attach_ml_result(result)
 
             set_scan_result(db, scan, result)
             return
@@ -89,6 +107,8 @@ def run_scan_job(scan_id: str) -> None:
                     "rootAnalyzed": str(repo_dir),
                 }
             )
+
+            result = _attach_ml_result(result)
 
             set_scan_result(db, scan, result)
             return
@@ -134,6 +154,8 @@ def run_scan_job(scan_id: str) -> None:
                 }
             )
 
+            result = _attach_ml_result(result)
+
             set_scan_result(db, scan, result)
             return
 
@@ -149,6 +171,8 @@ def run_scan_job(scan_id: str) -> None:
                 "rootAnalyzed": str(target_dir),
             }
         )
+
+        result = _attach_ml_result(result)
 
         set_scan_result(db, scan, result)
 
