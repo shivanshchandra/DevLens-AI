@@ -26,7 +26,7 @@ type FindingsTableItem = {
   severity: FindingSeverity
   filePath: string
   ruleId?: string
-  message?: string
+  message: string
 }
 
 function normalizeFindingsForTable(findings: Finding[]): FindingsTableItem[] {
@@ -37,7 +37,7 @@ function normalizeFindingsForTable(findings: Finding[]): FindingsTableItem[] {
     severity: finding.severity,
     filePath: finding.filePath ?? "—",
     ruleId: finding.ruleId,
-    message: finding.message,
+    message: finding.message ?? "",
   }))
 }
 
@@ -386,7 +386,12 @@ export function ReportView({
                 <CardTitle>Languages</CardTitle>
               </CardHeader>
               <CardContent>
-                <LanguageChart languages={results.metrics.languages} />
+                <LanguageChart
+                  languages={Object.entries(results.metrics.languages).map(([name, percent]) => ({
+                    name,
+                    percent,
+                  }))}
+                />
               </CardContent>
             </Card>
           </div>
