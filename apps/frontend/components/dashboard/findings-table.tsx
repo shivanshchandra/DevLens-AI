@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 
 type Finding = {
   id: string
-  type: "security" | "quality" | "complexity"
+  type: "security" | "quality" | "complexity" | "dependency" | "risk"
   severity: "low" | "medium" | "high" | "critical"
   title: string
   filePath: string

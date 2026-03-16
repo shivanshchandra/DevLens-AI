@@ -14,7 +14,10 @@ import type {
   Finding,
   FindingSeverity,
   FindingType,
+  FixSuggestion,
+  RefactorPriorityItem,
   ScanResults,
+  TopContributingFile,
 } from "@/lib/api/client"
 
 type Results = ScanResults
@@ -43,12 +46,24 @@ type MlExplanationDetail = {
   drivers?: string[]
 }
 
-type MlTopContributingFile = {
+type NormalizedFixSuggestion = {
+  id: string
+  title: string
+  why: string
+  filePath?: string
+  priority?: string
+  recommendedAction?: string
+  saferAlternative?: string | null
+}
+
+type NormalizedRefactorTarget = {
+  id: string
   filePath: string
-  priorityScore?: number
+  score?: number
   estimatedEffort?: string
   recommendedAction?: string
-  reasons?: string[]
+  reasons: string[]
+  source: "backend_top_files_to_fix" | "recommendations_topFilesToFix" | "ml_refactorPriority" | "topContributingFiles" | "complexityHotspots"
 }
 
 function normalizeFindingsForTable(findings: Finding[]): FindingsTableItem[] {
@@ -80,13 +95,19 @@ function formatScore(value?: number) {
   return value.toFixed(2)
 }
 
-function normalizeMl(results: Results) {
-  const ml = (results as any).ml ?? {}
+function titleCase(value?: string) {
+  if (!value) return "—"
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
 
-  const summary: MlSummary | undefined = ml.summary
+function normalizeMl(results: Results) {
+  const ml = results.ml ?? {}
+  const summary = ml.summary as MlSummary | string | undefined
+
   const riskPrediction =
     ml.riskPrediction ??
-    (summary
+    results.riskPrediction ??
+    (summary && typeof summary !== "string"
       ? {
           level: summary.predictedRiskLevel,
           score: summary.predictedRiskScore,
@@ -95,7 +116,8 @@ function normalizeMl(results: Results) {
 
   const technicalDebtPrediction =
     ml.technicalDebtPrediction ??
-    (summary
+    results.technicalDebtPrediction ??
+    (summary && typeof summary !== "string"
       ? {
           level: summary.predictedDebtLevel,
           score: summary.predictedDebtScore,
@@ -104,25 +126,36 @@ function normalizeMl(results: Results) {
 
   const explanationsRoot = ml.explanations ?? {}
 
-  const riskExplanation: MlExplanationDetail | undefined = explanationsRoot.risk
+  const riskExplanation: MlExplanationDetail | undefined =
+    explanationsRoot.risk ?? results.explanations?.risk
+
   const technicalDebtExplanation: MlExplanationDetail | undefined =
-    explanationsRoot.technicalDebt
+    explanationsRoot.technicalDebt ?? results.explanations?.technicalDebt
 
-  const topContributingFiles: MlTopContributingFile[] =
-    explanationsRoot.topContributingFiles ?? []
+  const topContributingFiles: TopContributingFile[] =
+    ml.topContributingFiles ??
+    results.topContributingFiles ??
+    explanationsRoot.topContributingFiles ??
+    []
 
-  const nextActions: string[] = explanationsRoot.nextActions ?? []
+  const nextActions: string[] =
+    ml.nextActions ??
+    results.nextActions ??
+    explanationsRoot.nextActions ??
+    []
 
   const summaryText =
-    typeof ml.summary === "string"
-      ? ml.summary
+    typeof summary === "string"
+      ? summary
       : summary
         ? `Predicted risk is ${summary.predictedRiskLevel ?? "unknown"} (${formatScore(
             summary.predictedRiskScore
           )}) and predicted technical debt is ${
             summary.predictedDebtLevel ?? "unknown"
           } (${formatScore(summary.predictedDebtScore)}).`
-        : undefined
+        : typeof results.summary === "string"
+          ? results.summary
+          : undefined
 
   return {
     riskPrediction,
@@ -132,6 +165,218 @@ function normalizeMl(results: Results) {
     topContributingFiles,
     nextActions,
     summaryText,
+  }
+}
+
+function normalizeFixSuggestions(results: Results): {
+  items: NormalizedFixSuggestion[]
+  source:
+    | "backend_fix_suggestions"
+    | "recommendations_fixSuggestions"
+    | "ml_fixSuggestions"
+    | "nextActions_fallback"
+    | "none"
+} {
+  const backendFixSuggestions: FixSuggestion[] = results.fix_suggestions ?? []
+  const recommendationsFixSuggestions: FixSuggestion[] =
+    results.recommendations?.fixSuggestions ?? []
+  const mlFixSuggestions: FixSuggestion[] = results.ml?.fixSuggestions ?? []
+
+  if (backendFixSuggestions.length > 0) {
+    return {
+      source: "backend_fix_suggestions",
+      items: backendFixSuggestions.map((item, index) => ({
+        id: item.findingId ?? item.id ?? `fix-${index}`,
+        title: item.title ?? "Suggested remediation",
+        why: item.why ?? item.description ?? "No explanation available.",
+        filePath: item.filePath,
+        priority: item.priority ?? item.severity,
+        recommendedAction: item.recommendedAction ?? item.action,
+        saferAlternative: item.saferAlternative,
+      })),
+    }
+  }
+
+  if (recommendationsFixSuggestions.length > 0) {
+    return {
+      source: "recommendations_fixSuggestions",
+      items: recommendationsFixSuggestions.map((item, index) => ({
+        id: item.findingId ?? item.id ?? `fix-${index}`,
+        title: item.title ?? "Suggested remediation",
+        why: item.why ?? item.description ?? "No explanation available.",
+        filePath: item.filePath,
+        priority: item.priority ?? item.severity,
+        recommendedAction: item.recommendedAction ?? item.action,
+        saferAlternative: item.saferAlternative,
+      })),
+    }
+  }
+
+  if (mlFixSuggestions.length > 0) {
+    return {
+      source: "ml_fixSuggestions",
+      items: mlFixSuggestions.map((item, index) => ({
+        id: item.findingId ?? item.id ?? `fix-${index}`,
+        title: item.title ?? item.summary ?? "Suggested remediation",
+        why: item.why ?? item.description ?? "No explanation available.",
+        filePath: item.filePath,
+        priority: item.priority ?? item.severity,
+        recommendedAction: item.recommendedAction ?? item.action,
+        saferAlternative: item.saferAlternative,
+      })),
+    }
+  }
+
+  if ((results.nextActions ?? []).length > 0 || (results.ml?.nextActions ?? []).length > 0) {
+    const actions = results.nextActions ?? results.ml?.nextActions ?? []
+    return {
+      source: "nextActions_fallback",
+      items: actions.map((action, index) => ({
+        id: `next-action-${index}`,
+        title: `Suggested quick win #${index + 1}`,
+        why: "Dedicated backend fix suggestions were not present, so this fallback uses generated next actions.",
+        filePath: undefined,
+        priority: undefined,
+        recommendedAction: action,
+        saferAlternative: null,
+      })),
+    }
+  }
+
+  return { source: "none", items: [] }
+}
+
+function normalizeRefactorTargets(
+  results: Results,
+  topContributingFiles: TopContributingFile[]
+): {
+  items: NormalizedRefactorTarget[]
+  source:
+    | "backend_top_files_to_fix"
+    | "recommendations_topFilesToFix"
+    | "ml_refactorPriority"
+    | "topContributingFiles"
+    | "complexityHotspots"
+    | "none"
+} {
+  const backendTopFilesToFix: RefactorPriorityItem[] = results.top_files_to_fix ?? []
+  const recommendationsTopFilesToFix: RefactorPriorityItem[] =
+    results.recommendations?.topFilesToFix ?? []
+  const mlRefactorPriority: RefactorPriorityItem[] =
+    results.ml?.refactorPriority ?? []
+
+  if (backendTopFilesToFix.length > 0) {
+    return {
+      source: "backend_top_files_to_fix",
+      items: backendTopFilesToFix.map((item, index) => ({
+        id: item.id ?? `top-files-to-fix-${index}`,
+        filePath: item.filePath,
+        score: item.priorityScore ?? item.contributionScore,
+        estimatedEffort: item.estimatedEffort,
+        recommendedAction: item.recommendedAction ?? item.title,
+        reasons: item.reasons ?? (item.reason ? [item.reason] : []),
+        source: "backend_top_files_to_fix",
+      })),
+    }
+  }
+
+  if (recommendationsTopFilesToFix.length > 0) {
+    return {
+      source: "recommendations_topFilesToFix",
+      items: recommendationsTopFilesToFix.map((item, index) => ({
+        id: item.id ?? `recommendations-top-files-${index}`,
+        filePath: item.filePath,
+        score: item.priorityScore ?? item.contributionScore,
+        estimatedEffort: item.estimatedEffort,
+        recommendedAction: item.recommendedAction ?? item.title,
+        reasons: item.reasons ?? (item.reason ? [item.reason] : []),
+        source: "recommendations_topFilesToFix",
+      })),
+    }
+  }
+
+  if (mlRefactorPriority.length > 0) {
+    return {
+      source: "ml_refactorPriority",
+      items: mlRefactorPriority.map((item, index) => ({
+        id: item.id ?? `ml-refactor-${index}`,
+        filePath: item.filePath,
+        score: item.priorityScore ?? item.contributionScore,
+        estimatedEffort: item.estimatedEffort,
+        recommendedAction: item.recommendedAction ?? item.title,
+        reasons: item.reasons ?? (item.reason ? [item.reason] : []),
+        source: "ml_refactorPriority",
+      })),
+    }
+  }
+
+  if (topContributingFiles.length > 0) {
+    return {
+      source: "topContributingFiles",
+      items: topContributingFiles.map((item, index) => ({
+        id: `top-contrib-${index}`,
+        filePath: item.filePath,
+        score: item.priorityScore ?? item.contributionScore,
+        estimatedEffort: item.estimatedEffort,
+        recommendedAction: item.recommendedAction,
+        reasons: item.reasons ?? [],
+        source: "topContributingFiles",
+      })),
+    }
+  }
+
+  if ((results.metrics?.complexityHotspots ?? []).length > 0) {
+    return {
+      source: "complexityHotspots",
+      items: results.metrics.complexityHotspots.slice(0, 5).map((item, index) => ({
+        id: `hotspot-${index}`,
+        filePath: item.filePath,
+        score: item.score,
+        estimatedEffort: undefined,
+        recommendedAction: "Dedicated backend refactor targets were not present, so this fallback uses complexity hotspots.",
+        reasons: ["Complexity hotspot fallback"],
+        source: "complexityHotspots",
+      })),
+    }
+  }
+
+  return { source: "none", items: [] }
+}
+
+function sourceLabel(
+  source:
+    | "backend_fix_suggestions"
+    | "recommendations_fixSuggestions"
+    | "ml_fixSuggestions"
+    | "nextActions_fallback"
+    | "backend_top_files_to_fix"
+    | "recommendations_topFilesToFix"
+    | "ml_refactorPriority"
+    | "topContributingFiles"
+    | "complexityHotspots"
+    | "none"
+) {
+  switch (source) {
+    case "backend_fix_suggestions":
+      return "Backend"
+    case "recommendations_fixSuggestions":
+      return "Recommendations"
+    case "ml_fixSuggestions":
+      return "ML fallback"
+    case "nextActions_fallback":
+      return "Next actions fallback"
+    case "backend_top_files_to_fix":
+      return "Backend"
+    case "recommendations_topFilesToFix":
+      return "Recommendations"
+    case "ml_refactorPriority":
+      return "ML fallback"
+    case "topContributingFiles":
+      return "Top files fallback"
+    case "complexityHotspots":
+      return "Complexity fallback"
+    default:
+      return "Unavailable"
   }
 }
 
@@ -158,6 +403,9 @@ export function ReportView({
     nextActions,
     summaryText,
   } = normalizeMl(results)
+
+  const fixSuggestionsState = normalizeFixSuggestions(results)
+  const refactorTargetsState = normalizeRefactorTargets(results, topContributingFiles)
 
   const hasMlInsights =
     !!riskPrediction ||
@@ -375,8 +623,8 @@ export function ReportView({
                         <div className="flex items-center justify-between gap-3">
                           <div className="font-mono text-xs break-all">{file.filePath}</div>
                           <Badge variant="outline">
-                            {typeof file.priorityScore === "number"
-                              ? file.priorityScore.toFixed(0)
+                            {typeof (file.priorityScore ?? file.contributionScore) === "number"
+                              ? Number(file.priorityScore ?? file.contributionScore).toFixed(0)
                               : "N/A"}
                           </Badge>
                         </div>
@@ -508,7 +756,7 @@ export function ReportView({
               <CardTitle>Complexity hotspots</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {results.metrics.complexityHotspots.map((h: any, i: number) => (
+              {results.metrics.complexityHotspots.map((h, i) => (
                 <div
                   key={`${h.filePath}-${h.score}-${i}`}
                   className="flex items-center justify-between rounded-md border px-3 py-2"
@@ -534,36 +782,93 @@ export function ReportView({
 
         <TabsContent value="fixes" className="mt-6 space-y-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle>Suggested quick wins</CardTitle>
+              <Badge variant="outline">{sourceLabel(fixSuggestionsState.source)}</Badge>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm text-muted-foreground">
-              <ul className="list-disc pl-5">
-                <li>Upgrade vulnerable dependencies and lock versions.</li>
-                <li>Split high-complexity functions into smaller units.</li>
-                <li>Add validation + error boundaries for forms.</li>
-                <li>Introduce consistent naming + shared constants.</li>
-              </ul>
+            <CardContent className="space-y-3">
+              {fixSuggestionsState.items.length ? (
+                fixSuggestionsState.items.map((item) => (
+                  <div key={item.id} className="rounded-md border px-3 py-3 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="text-sm font-medium">{item.title}</div>
+                        <div className="text-sm text-muted-foreground">{item.why}</div>
+                      </div>
+
+                      {item.priority && (
+                        <Badge variant="outline">{titleCase(item.priority)}</Badge>
+                      )}
+                    </div>
+
+                    {item.filePath && (
+                      <div className="font-mono text-xs text-muted-foreground break-all">
+                        {item.filePath}
+                      </div>
+                    )}
+
+                    {item.recommendedAction && (
+                      <div className="text-sm text-muted-foreground">
+                        Action: {item.recommendedAction}
+                      </div>
+                    )}
+
+                    {item.saferAlternative && (
+                      <div className="text-sm text-muted-foreground">
+                        Safer alternative: {item.saferAlternative}
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Backend fix suggestions are not available for this scan. Fallback also failed.
+                </p>
+              )}
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle>Top refactor targets</CardTitle>
+              <Badge variant="outline">{sourceLabel(refactorTargetsState.source)}</Badge>
             </CardHeader>
             <CardContent className="space-y-3">
-              {results.metrics.complexityHotspots.slice(0, 3).map((h: any, i: number) => (
-                <div
-                  key={`${h.filePath}-${h.score}-${i}`}
-                  className="flex items-center justify-between rounded-md border px-3 py-2"
-                >
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline">#{i + 1}</Badge>
-                    <div className="font-mono text-xs">{h.filePath}</div>
+              {refactorTargetsState.items.length ? (
+                refactorTargetsState.items.slice(0, 5).map((item, index) => (
+                  <div
+                    key={item.id}
+                    className="rounded-md border px-3 py-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Badge variant="outline">#{index + 1}</Badge>
+                        <div className="font-mono text-xs break-all">{item.filePath}</div>
+                      </div>
+                      <div className="text-sm font-semibold">
+                        {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                      {item.estimatedEffort && <span>Effort: {item.estimatedEffort}</span>}
+                      {item.recommendedAction && <span>Action: {item.recommendedAction}</span>}
+                    </div>
+
+                    {!!item.reasons.length && (
+                      <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                        {item.reasons.map((reason, reasonIndex) => (
+                          <li key={`${item.id}-reason-${reasonIndex}`}>{reason}</li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
-                  <div className="text-sm font-semibold">{h.score}</div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Backend refactor targets are not available for this scan. Fallback also failed.
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -20,7 +20,7 @@ export type ScanRecord = {
   updated_at: string
 }
 
-export type FindingType = "security" | "quality" | "complexity"
+export type FindingType = "security" | "quality" | "complexity" | "dependency" | "risk"
 export type FindingSeverity = "low" | "medium" | "high" | "critical"
 
 export type Finding = {
@@ -38,14 +38,8 @@ export type ComplexityHotspot = {
   score: number
 }
 
-export type PredictionSummary = {
-  predictedRiskScore?: number
-  predictedRiskLevel?: string
-  predictedDebtScore?: number
-  predictedDebtLevel?: string
-}
-
 export type ExplanationBlock = {
+  title?: string
   narrative?: string
   reasons?: string[]
   drivers?: string[]
@@ -54,11 +48,47 @@ export type ExplanationBlock = {
 export type TopContributingFile = {
   filePath: string
   contributionScore?: number
+  priorityScore?: number
   estimatedEffort?: string
   recommendedAction?: string
+  reasons?: string[]
+}
+
+export type FixSuggestion = {
+  findingId?: string
+  filePath?: string
+  title?: string
+  priority?: string
+  why?: string
+  recommendedAction?: string
+  saferAlternative?: string | null
+
+  // optional compatibility fields
+  id?: string
+  description?: string
+  summary?: string
+  severity?: string
+  category?: string
+  estimatedEffort?: string
+  action?: string
+}
+
+export type RefactorPriorityItem = {
+  filePath: string
+  priorityScore?: number
+  contributionScore?: number
+  estimatedEffort?: string
+  reasons?: string[]
+  recommendedAction?: string
+
+  // optional compatibility fields
+  id?: string
+  reason?: string
+  title?: string
 }
 
 export type MlInsights = {
+  version?: string
   featureVector?: Record<string, number | string | boolean | null>
   riskPrediction?: {
     score?: number
@@ -71,10 +101,26 @@ export type MlInsights = {
   explanations?: {
     risk?: ExplanationBlock
     technicalDebt?: ExplanationBlock
+    topContributingFiles?: TopContributingFile[]
+    nextActions?: string[]
   }
   topContributingFiles?: TopContributingFile[]
   nextActions?: string[]
-  summary?: string
+  summary?:
+    | string
+    | {
+        predictedRiskScore?: number
+        predictedRiskLevel?: string
+        predictedDebtScore?: number
+        predictedDebtLevel?: string
+      }
+  fixSuggestions?: FixSuggestion[]
+  refactorPriority?: RefactorPriorityItem[]
+}
+
+export type Recommendations = {
+  fixSuggestions?: FixSuggestion[]
+  topFilesToFix?: RefactorPriorityItem[]
 }
 
 export type ScanResults = {
@@ -90,7 +136,9 @@ export type ScanResults = {
     languages: Record<string, number>
     complexityHotspots: ComplexityHotspot[]
   }
+
   ml?: MlInsights
+  recommendations?: Recommendations
 
   riskPrediction?: {
     score?: number
@@ -107,6 +155,14 @@ export type ScanResults = {
   topContributingFiles?: TopContributingFile[]
   nextActions?: string[]
   summary?: string
+
+  // real backend legacy keys
+  fix_suggestions?: FixSuggestion[]
+  top_files_to_fix?: RefactorPriorityItem[]
+
+  // optional camelCase compatibility
+  fixSuggestions?: FixSuggestion[]
+  refactorPriority?: RefactorPriorityItem[]
 }
 
 export type ScanResultsResponse = {
