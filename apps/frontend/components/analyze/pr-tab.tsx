@@ -36,6 +36,7 @@ export function PrTab() {
       setError("Please enter a valid repository URL.")
       return
     }
+
     if (!Number.isInteger(prAsNumber) || prAsNumber <= 0) {
       setError("PR number must be a positive integer.")
       return
@@ -59,7 +60,7 @@ export function PrTab() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2)">
         <div className="space-y-2">
           <Label htmlFor="repoUrl">Repository URL</Label>
           <Input
@@ -89,7 +90,7 @@ export function PrTab() {
           {loading ? "Starting…" : "Analyze Pull Request"}
         </Button>
         <p className="text-xs text-muted-foreground">
-          In real mode, we’ll scan only changed files to be fast.
+          Starts a real PR scan focused on changed files for faster review.
         </p>
       </div>
     </div>

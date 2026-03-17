@@ -1,20 +1,53 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useState } from "react"
+import Link from "next/link"
+
 import { AppShell } from "@/components/layout/app-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 
-import { getAllMockScans } from "@/lib/mock/scans"
 import { CompareSelector } from "@/components/compare/compare-selector"
 import { CompareView } from "@/components/compare/compare-view"
 import { EmptyState } from "@/components/shared/empty-state"
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
+import { listScans, type ScanRecord } from "@/lib/api/client"
 
 export default function ComparePage() {
-  const scans = useMemo(() => getAllMockScans(), [])
+  const [scans, setScans] = useState<ScanRecord[]>([])
   const [a, setA] = useState<string>("")
   const [b, setB] = useState<string>("")
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    async function load() {
+      try {
+        setLoading(true)
+        setError(null)
+
+        const data = await listScans(50, 0)
+        if (!mounted) return
+
+        const completedScans = data.filter((scan) => scan.status === "completed")
+        setScans(completedScans)
+      } catch (e: any) {
+        if (!mounted) return
+        setError(e?.message ?? "Failed to load scans.")
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    load()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   return (
     <AppShell>
@@ -22,14 +55,30 @@ export default function ComparePage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Compare</h1>
           <p className="text-sm text-muted-foreground">
-            Compare two scans and see improvements or regressions.
+            Compare two completed scans and see improvements or regressions.
           </p>
         </div>
 
-        {scans.length < 2 ? (
+        {loading ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Loading scans…</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              Fetching completed scans from backend.
+            </CardContent>
+          </Card>
+        ) : error ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Unable to load scans</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-destructive">{error}</CardContent>
+          </Card>
+        ) : scans.length < 2 ? (
           <EmptyState
-            title="Not enough scans to compare"
-            description="Run at least two scans to unlock comparison."
+            title="Not enough completed scans to compare"
+            description="Run and complete at least two scans to unlock comparison."
             action={
               <Button asChild>
                 <Link href="/analyze">Run a scan</Link>

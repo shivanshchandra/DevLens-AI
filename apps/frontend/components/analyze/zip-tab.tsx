@@ -21,6 +21,7 @@ export function ZipTab() {
 
   function onPick(f: File | null) {
     setError(null)
+
     if (!f) {
       setFile(null)
       return
@@ -34,6 +35,7 @@ export function ZipTab() {
       setFile(null)
       return
     }
+
     if (sizeMb > MAX_MB) {
       setError(`File is too large. Max allowed is ${MAX_MB}MB.`)
       setFile(null)
@@ -45,6 +47,7 @@ export function ZipTab() {
 
   async function onSubmit() {
     setError(null)
+
     if (!file) {
       setError("Please select a ZIP file.")
       return
@@ -52,7 +55,6 @@ export function ZipTab() {
 
     setLoading(true)
     try {
-      // Milestone 1: just create a scan record. Upload comes later.
       const scan = await createScan({
         source_type: "zip",
         repo_url: null,
@@ -77,11 +79,13 @@ export function ZipTab() {
           accept=".zip"
           onChange={(e) => onPick(e.target.files?.[0] ?? null)}
         />
+
         {file ? (
           <p className="text-xs text-muted-foreground">
             Selected: <span className="font-medium">{file.name}</span>
           </p>
         ) : null}
+
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
       </div>
 
@@ -90,7 +94,8 @@ export function ZipTab() {
           {loading ? "Starting…" : "Analyze ZIP"}
         </Button>
         <p className="text-xs text-muted-foreground">
-          Upload + extraction will be implemented in the scanner milestone.
+          ZIP scan record creation is wired. If file upload is not yet connected in the API flow,
+          this mode may still need backend/frontend upload completion.
         </p>
       </div>
     </div>

@@ -38,7 +38,6 @@ export function RepoTab() {
 
     setLoading(true)
     try {
-      // For Milestone 1: backend only stores repo_url; branch/commit will be used later
       const scan = await createScan({
         source_type: "github",
         repo_url: repoUrl,
@@ -47,7 +46,7 @@ export function RepoTab() {
 
       router.push(`/scanning/${scan.id}`)
     } catch (e: any) {
-      setError(e?.message ?? "Failed to start scan.")
+      setError(e?.message ?? "Failed to start repository scan.")
     } finally {
       setLoading(false)
     }
@@ -93,7 +92,7 @@ export function RepoTab() {
           {loading ? "Starting…" : "Analyze Repository"}
         </Button>
         <p className="text-xs text-muted-foreground">
-          Now this creates a real scan in Postgres (results are mock in DB for now).
+          Starts a real repository scan and sends you to the live scanning workflow.
         </p>
       </div>
     </div>

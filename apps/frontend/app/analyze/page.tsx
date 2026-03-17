@@ -14,7 +14,8 @@ export default function AnalyzePage() {
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold tracking-tight">Analyze</h1>
           <p className="text-sm text-muted-foreground">
-            Choose a mode, start a scan, and get a health score + actionable fixes.
+            Start a repository, ZIP, or PR scan and get health, findings, AI insights, and
+            actionable fixes.
           </p>
         </div>
 

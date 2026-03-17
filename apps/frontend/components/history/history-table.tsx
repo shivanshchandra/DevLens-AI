@@ -29,11 +29,23 @@ function statusVariant(status: Scan["status"]) {
   return "outline"
 }
 
+function sourceVariant(sourceType: Scan["source_type"]) {
+  if (sourceType === "pr") return "secondary"
+  return "outline"
+}
+
 function labelForScan(scan: Scan) {
   if (scan.source_type === "github") return scan.repo_url ?? "Repo scan"
-  if (scan.source_type === "pr")
+  if (scan.source_type === "pr") {
     return `${scan.repo_url ?? "Repo"} #${scan.pr_number ?? "?"}`
+  }
   return "ZIP scan"
+}
+
+function sourceLabel(sourceType: Scan["source_type"]) {
+  if (sourceType === "github") return "Repository"
+  if (sourceType === "pr") return "Pull Request"
+  return "ZIP Upload"
 }
 
 export function HistoryTable({ scans }: { scans: Scan[] }) {
@@ -43,14 +55,24 @@ export function HistoryTable({ scans }: { scans: Scan[] }) {
     toast({ title: "Share link copied" })
   }
 
+  if (!scans.length) {
+    return (
+      <div className="rounded-md border px-4 py-6 text-sm text-muted-foreground">
+        No scans available yet.
+      </div>
+    )
+  }
+
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>Status</TableHead>
+          <TableHead>Source</TableHead>
           <TableHead>Target</TableHead>
           <TableHead>Created</TableHead>
-          <TableHead className="text-right">Action</TableHead>
+          <TableHead>Scan ID</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
 
@@ -61,12 +83,22 @@ export function HistoryTable({ scans }: { scans: Scan[] }) {
               <Badge variant={statusVariant(s.status) as any}>{s.status}</Badge>
             </TableCell>
 
-            <TableCell className="max-w-[520px] truncate">
-              <span className="font-mono text-xs">{labelForScan(s)}</span>
+            <TableCell>
+              <Badge variant={sourceVariant(s.source_type) as any}>
+                {sourceLabel(s.source_type)}
+              </Badge>
+            </TableCell>
+
+            <TableCell className="max-w-[520px]">
+              <div className="truncate font-mono text-xs">{labelForScan(s)}</div>
             </TableCell>
 
             <TableCell className="text-sm text-muted-foreground">
               {new Date(s.created_at).toLocaleString()}
+            </TableCell>
+
+            <TableCell className="font-mono text-xs text-muted-foreground">
+              {s.id.slice(0, 8)}
             </TableCell>
 
             <TableCell className="text-right">

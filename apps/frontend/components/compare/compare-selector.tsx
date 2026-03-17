@@ -1,23 +1,23 @@
 "use client"
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import type { ScanRecord } from "@/lib/api/client"
 
-type Scan = {
-  id: string
-  createdAt: string
-  request?: { mode: "repo" | "zip" | "pr"; payload: any }
-}
-
-function label(scan: Scan) {
+function label(scan: ScanRecord) {
   const short = scan.id.slice(0, 8)
+
   const target =
-    scan.request?.mode === "repo"
-      ? scan.request.payload.repoUrl
-      : scan.request?.mode === "pr"
-        ? `${scan.request.payload.repoUrl} #${scan.request.payload.prNumber}`
-        : scan.request?.mode === "zip"
-          ? scan.request.payload.fileName
-          : "Unknown"
+    scan.source_type === "github"
+      ? scan.repo_url ?? "Repository scan"
+      : scan.source_type === "pr"
+        ? `${scan.repo_url ?? "Repository"} #${scan.pr_number ?? "?"}`
+        : "ZIP upload"
 
   return `${short} • ${target}`
 }
@@ -29,7 +29,7 @@ export function CompareSelector({
   setA,
   setB,
 }: {
-  scans: Scan[]
+  scans: ScanRecord[]
   a: string
   b: string
   setA: (v: string) => void

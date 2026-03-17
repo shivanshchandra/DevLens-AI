@@ -23,26 +23,61 @@ function severityVariant(sev: Finding["severity"]) {
   return "outline"
 }
 
+function typeVariant(type: Finding["type"]) {
+  if (type === "security") return "destructive"
+  if (type === "dependency") return "secondary"
+  if (type === "risk") return "secondary"
+  return "outline"
+}
+
+function formatType(type: Finding["type"]) {
+  if (type === "dependency") return "Dependency"
+  if (type === "quality") return "Quality"
+  if (type === "complexity") return "Complexity"
+  if (type === "security") return "Security"
+  if (type === "risk") return "Risk"
+  return type
+}
+
 export function FindingsTable({ findings }: { findings: Finding[] }) {
+  if (!findings.length) {
+    return (
+      <div className="rounded-md border px-4 py-6 text-sm text-muted-foreground">
+        No findings available.
+      </div>
+    )
+  }
+
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>Severity</TableHead>
           <TableHead>Type</TableHead>
-          <TableHead>Title</TableHead>
+          <TableHead>Finding</TableHead>
           <TableHead>File</TableHead>
         </TableRow>
       </TableHeader>
+
       <TableBody>
         {findings.map((f) => (
           <TableRow key={f.id}>
             <TableCell>
               <Badge variant={severityVariant(f.severity) as any}>{f.severity}</Badge>
             </TableCell>
-            <TableCell className="capitalize">{f.type}</TableCell>
-            <TableCell>{f.title}</TableCell>
-            <TableCell className="font-mono text-xs">{f.filePath}</TableCell>
+
+            <TableCell>
+              <Badge variant={typeVariant(f.type) as any}>{formatType(f.type)}</Badge>
+            </TableCell>
+
+            <TableCell className="space-y-1">
+              <div className="font-medium">{f.title}</div>
+              {f.message ? (
+                <div className="text-xs text-muted-foreground">{f.message}</div>
+              ) : null}
+            </TableCell>
+
+            <TableCell className="font-mono text-xs break-all">{f.filePath}</TableCell>
           </TableRow>
         ))}
       </TableBody>
