@@ -23,7 +23,6 @@ def create_scan_endpoint(payload: ScanCreate, db: Session = Depends(get_db)):
         ref=payload.ref,
     )
 
-    # enqueue background scan job (async)
     from app.worker.queue import get_queue
     from app.worker.jobs import run_scan_job
 
@@ -38,20 +37,28 @@ def upload_zip_scan_endpoint(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    # 1) validate zip
-    filename = (file.filename or "").lower()
-    if not filename.endswith(".zip"):
+    filename = (file.filename or "").strip()
+    if not filename:
+        raise HTTPException(status_code=400, detail="ZIP filename is missing")
+
+    if not filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Only .zip files are supported")
 
-    # 2) store zip on disk
     uploads_dir = Path(os.getenv("DEVLENS_UPLOADS_DIR", "./uploads")).resolve()
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
     zip_path = uploads_dir / f"{uuid.uuid4()}.zip"
-    with zip_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
 
-    # 3) create scan row (zip)
+    try:
+        with zip_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception:
+        if zip_path.exists():
+            zip_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Failed to store uploaded ZIP")
+    finally:
+        file.file.close()
+
     scan = create_scan(
         db=db,
         source_type="zip",
@@ -61,7 +68,6 @@ def upload_zip_scan_endpoint(
         ref=None,
     )
 
-    # 4) enqueue job
     from app.worker.queue import get_queue
     from app.worker.jobs import run_scan_job
 

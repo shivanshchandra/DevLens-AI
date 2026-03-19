@@ -70,7 +70,6 @@ export type FixSuggestion = {
   recommendedAction?: string
   saferAlternative?: string | null
 
-  // optional compatibility fields
   id?: string
   description?: string
   summary?: string
@@ -88,7 +87,6 @@ export type RefactorPriorityItem = {
   reasons?: string[]
   recommendedAction?: string
 
-  // optional compatibility fields
   id?: string
   reason?: string
   title?: string
@@ -163,11 +161,9 @@ export type ScanResults = {
   nextActions?: string[]
   summary?: string
 
-  // real backend legacy keys
   fix_suggestions?: FixSuggestion[]
   top_files_to_fix?: RefactorPriorityItem[]
 
-  // optional camelCase compatibility
   fixSuggestions?: FixSuggestion[]
   refactorPriority?: RefactorPriorityItem[]
 }
@@ -178,12 +174,18 @@ export type ScanResultsResponse = {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers ?? {})
+
+  const isFormData =
+    typeof FormData !== "undefined" && init?.body instanceof FormData
+
+  if (!isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json")
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers,
     cache: "no-store",
   })
 
@@ -199,6 +201,16 @@ export function createScan(body: CreateScanBody) {
   return request<ScanRecord>("/api/scans", {
     method: "POST",
     body: JSON.stringify(body),
+  })
+}
+
+export function uploadZipScan(file: File) {
+  const formData = new FormData()
+  formData.append("file", file)
+
+  return request<ScanRecord>("/api/scans/upload-zip", {
+    method: "POST",
+    body: formData,
   })
 }
 

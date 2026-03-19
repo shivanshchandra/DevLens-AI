@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 
-import { createScan } from "@/lib/api/client"
+import { uploadZipScan } from "@/lib/api/client"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -55,15 +55,10 @@ export function ZipTab() {
 
     setLoading(true)
     try {
-      const scan = await createScan({
-        source_type: "zip",
-        repo_url: null,
-        pr_number: null,
-      })
-
+      const scan = await uploadZipScan(file)
       router.push(`/scanning/${scan.id}`)
     } catch (e: any) {
-      setError(e?.message ?? "Failed to start ZIP scan.")
+      setError(e?.message ?? "Failed to upload ZIP and start scan.")
     } finally {
       setLoading(false)
     }
@@ -91,11 +86,10 @@ export function ZipTab() {
 
       <div className="flex items-center gap-3">
         <Button onClick={onSubmit} disabled={!canSubmit}>
-          {loading ? "Starting…" : "Analyze ZIP"}
+          {loading ? "Uploading…" : "Analyze ZIP"}
         </Button>
         <p className="text-xs text-muted-foreground">
-          ZIP scan record creation is wired. If file upload is not yet connected in the API flow,
-          this mode may still need backend/frontend upload completion.
+          Upload a ZIP archive of your project to run a full codebase scan.
         </p>
       </div>
     </div>
