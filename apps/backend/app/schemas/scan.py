@@ -22,7 +22,6 @@ class ScanCreate(BaseModel):
             raise ValueError("repo_url is required for github/pr scans")
         if self.source_type == "pr" and self.pr_number is None:
             raise ValueError("pr_number is required for pr scans")
-        # ref is optional (no validation yet)
 
 
 class ScanOut(BaseModel):
@@ -32,6 +31,12 @@ class ScanOut(BaseModel):
     pr_number: Optional[int]
     ref: Optional[str]
     status: ScanStatus
+
+    # NEW: real backend progress tracking fields
+    progress: int
+    current_step: str
+    status_message: Optional[str]
+
     error_message: Optional[str]
     created_at: datetime
     updated_at: datetime

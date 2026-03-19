@@ -22,10 +22,15 @@ class Scan(Base):
     pr_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
-    # ✅ NEW: store uploaded zip path (or later repo workdir path)
+    # store uploaded zip path
     zip_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+
+    # NEW: real backend progress tracking
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    current_step: Mapped[str] = mapped_column(String(100), nullable=False, default="queued")
+    status_message: Mapped[str | None] = mapped_column(String(500), nullable=True, default="Scan queued")
 
     # For v1: store dashboard payload here. Later we normalize tables.
     result_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

@@ -7,6 +7,7 @@ type CreateScanBody = {
   source_type: "github" | "zip" | "pr"
   repo_url?: string | null
   pr_number?: number | null
+  ref?: string | null
 }
 
 export type ScanRecord = {
@@ -14,7 +15,13 @@ export type ScanRecord = {
   source_type: "github" | "zip" | "pr"
   repo_url: string | null
   pr_number: number | null
+  ref?: string | null
   status: "queued" | "running" | "completed" | "failed"
+
+  progress: number
+  current_step: string
+  status_message: string | null
+
   error_message: string | null
   created_at: string
   updated_at: string

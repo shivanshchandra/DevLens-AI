@@ -6,6 +6,7 @@ from app.db.session import SessionLocal
 from app.services.scan_service import (
     get_scan,
     set_scan_failed,
+    set_scan_progress,
     set_scan_result,
     set_scan_status,
 )
@@ -51,12 +52,27 @@ def run_scan_job(scan_id: str) -> None:
         if not scan:
             return
 
-        set_scan_status(db, scan, "running")
+        set_scan_status(
+            db,
+            scan,
+            "running",
+            progress=5,
+            current_step="preparing",
+            status_message="Preparing scan job",
+        )
 
         # ZIP scan
         if scan.source_type == "zip":
             if not scan.zip_path:
                 raise RuntimeError("zip_path missing for zip scan")
+
+            set_scan_progress(
+                db,
+                scan,
+                progress=15,
+                current_step="fetching_source",
+                status_message="Extracting ZIP and preparing files",
+            )
 
             zip_file = Path(scan.zip_path).resolve()
             extract_dir = (WORKDIR_BASE / "extracts" / str(scan.id)).resolve()
@@ -65,6 +81,22 @@ def run_scan_job(scan_id: str) -> None:
             extract_dir.mkdir(parents=True, exist_ok=True)
 
             safe_extract_zip(zip_file, extract_dir)
+
+            set_scan_progress(
+                db,
+                scan,
+                progress=35,
+                current_step="dependency_security",
+                status_message="Scanning dependencies and secrets",
+            )
+
+            set_scan_progress(
+                db,
+                scan,
+                progress=60,
+                current_step="complexity_findings",
+                status_message="Analyzing complexity and findings",
+            )
 
             result = analyze_directory(extract_dir)
 
@@ -76,7 +108,23 @@ def run_scan_job(scan_id: str) -> None:
                 }
             )
 
+            set_scan_progress(
+                db,
+                scan,
+                progress=80,
+                current_step="ml_scoring",
+                status_message="Running ML risk and technical debt scoring",
+            )
+
             result = _attach_ml_result(result)
+
+            set_scan_progress(
+                db,
+                scan,
+                progress=92,
+                current_step="report_building",
+                status_message="Building final report",
+            )
 
             set_scan_result(db, scan, result)
             return
@@ -86,6 +134,14 @@ def run_scan_job(scan_id: str) -> None:
             if not scan.repo_url:
                 raise RuntimeError("repo_url missing for github scan")
 
+            set_scan_progress(
+                db,
+                scan,
+                progress=15,
+                current_step="fetching_source",
+                status_message="Cloning repository",
+            )
+
             repo_dir = (WORKDIR_BASE / "repos" / str(scan.id)).resolve()
             safe_rmtree(repo_dir)
 
@@ -94,6 +150,22 @@ def run_scan_job(scan_id: str) -> None:
             normalized_ref = None
             if getattr(scan, "ref", None):
                 normalized_ref = checkout_ref(repo_dir, scan.ref)
+
+            set_scan_progress(
+                db,
+                scan,
+                progress=35,
+                current_step="dependency_security",
+                status_message="Scanning dependencies and secrets",
+            )
+
+            set_scan_progress(
+                db,
+                scan,
+                progress=60,
+                current_step="complexity_findings",
+                status_message="Analyzing complexity and findings",
+            )
 
             result = analyze_directory(repo_dir)
 
@@ -108,7 +180,23 @@ def run_scan_job(scan_id: str) -> None:
                 }
             )
 
+            set_scan_progress(
+                db,
+                scan,
+                progress=80,
+                current_step="ml_scoring",
+                status_message="Running ML risk and technical debt scoring",
+            )
+
             result = _attach_ml_result(result)
+
+            set_scan_progress(
+                db,
+                scan,
+                progress=92,
+                current_step="report_building",
+                status_message="Building final report",
+            )
 
             set_scan_result(db, scan, result)
             return
@@ -119,6 +207,14 @@ def run_scan_job(scan_id: str) -> None:
                 raise RuntimeError("repo_url missing for pr scan")
             if scan.pr_number is None:
                 raise RuntimeError("pr_number missing for pr scan")
+
+            set_scan_progress(
+                db,
+                scan,
+                progress=15,
+                current_step="fetching_source",
+                status_message="Fetching pull request context and cloning repository",
+            )
 
             # 1) fetch PR metadata/files from GitHub API
             pr_context = get_pull_request_context(scan.repo_url, scan.pr_number)
@@ -131,6 +227,22 @@ def run_scan_job(scan_id: str) -> None:
 
             # 3) checkout PR head using GitHub synthetic PR ref
             checked_out_ref = checkout_pull_request_head(repo_dir, scan.pr_number)
+
+            set_scan_progress(
+                db,
+                scan,
+                progress=35,
+                current_step="dependency_security",
+                status_message="Scanning pull request dependencies and secrets",
+            )
+
+            set_scan_progress(
+                db,
+                scan,
+                progress=60,
+                current_step="complexity_findings",
+                status_message="Analyzing pull request complexity and findings",
+            )
 
             # 4) analyze only changed files from the PR
             result = analyze_pull_request(repo_dir, pr_context)
@@ -154,13 +266,54 @@ def run_scan_job(scan_id: str) -> None:
                 }
             )
 
+            set_scan_progress(
+                db,
+                scan,
+                progress=80,
+                current_step="ml_scoring",
+                status_message="Running ML risk and technical debt scoring",
+            )
+
             result = _attach_ml_result(result)
+
+            set_scan_progress(
+                db,
+                scan,
+                progress=92,
+                current_step="report_building",
+                status_message="Building final report",
+            )
 
             set_scan_result(db, scan, result)
             return
 
         # dev fallback
+        set_scan_progress(
+            db,
+            scan,
+            progress=15,
+            current_step="fetching_source",
+            status_message="Preparing local analysis directory",
+        )
+
         target_dir = Path(os.getenv("DEVLENS_ANALYZE_DIR", Path.cwd())).resolve()
+
+        set_scan_progress(
+            db,
+            scan,
+            progress=35,
+            current_step="dependency_security",
+            status_message="Scanning dependencies and secrets",
+        )
+
+        set_scan_progress(
+            db,
+            scan,
+            progress=60,
+            current_step="complexity_findings",
+            status_message="Analyzing complexity and findings",
+        )
+
         result = analyze_directory(target_dir)
 
         result.setdefault("meta", {})
@@ -172,7 +325,23 @@ def run_scan_job(scan_id: str) -> None:
             }
         )
 
+        set_scan_progress(
+            db,
+            scan,
+            progress=80,
+            current_step="ml_scoring",
+            status_message="Running ML risk and technical debt scoring",
+        )
+
         result = _attach_ml_result(result)
+
+        set_scan_progress(
+            db,
+            scan,
+            progress=92,
+            current_step="report_building",
+            status_message="Building final report",
+        )
 
         set_scan_result(db, scan, result)
 
