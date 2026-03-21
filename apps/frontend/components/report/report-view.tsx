@@ -66,10 +66,50 @@ type NormalizedRefactorTarget = {
   source: "backend_top_files_to_fix" | "recommendations_topFilesToFix" | "ml_refactorPriority" | "topContributingFiles" | "complexityHotspots"
 }
 
+type ArchitectureSummary = {
+  totalFilesAnalyzed?: number
+  totalLocAnalyzed?: number
+  possibleGodFiles?: number
+  hotspotDirectories?: number
+  architectureSmells?: number
+  architectureRiskScore?: number
+  architectureRiskLevel?: string
+}
+
+type ArchitectureDirectoryHotspot = {
+  directoryPath: string
+  fileCount?: number
+  loc?: number
+  locShare?: number
+  issueCount?: number
+  hotspotCount?: number
+  score?: number
+}
+
+type ArchitectureFileHotspot = {
+  filePath: string
+  loc?: number
+  findingCount?: number
+  hotspotScore?: number
+  score?: number
+  reasons?: string[]
+}
+
+type ArchitectureSmell = {
+  id?: string
+  title?: string
+  severity?: string
+  message?: string
+  recommendation?: string
+}
+
 function normalizeFindingsForTable(findings: Finding[]): FindingsTableItem[] {
   return findings.map((finding, index) => ({
     id: finding.id ?? `${finding.type}-${finding.filePath ?? "file"}-${index}`,
-    type: finding.type,
+    type:
+      finding.ruleId === "CYCLO_COMPLEXITY"
+        ? ("complexity" as FindingType)
+        : finding.type,
     title: finding.title,
     severity: finding.severity,
     filePath: finding.filePath ?? "—",
@@ -98,6 +138,58 @@ function formatScore(value?: number) {
 function titleCase(value?: string) {
   if (!value) return "—"
   return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+function normalizeLanguages(results: Results) {
+  const raw = results.metrics?.languages ?? []
+
+  if (Array.isArray(raw)) {
+    return raw.map((item: any) => ({
+      name: String(item?.name ?? "Unknown"),
+      percent: Number(item?.percent ?? 0),
+    }))
+  }
+
+  return Object.entries(raw).map(([name, percent]) => ({
+    name,
+    percent: Number(percent ?? 0),
+  }))
+}
+
+function normalizeArchitecture(results: Results) {
+  const architecture = (results as any).architecture ?? {}
+  const summariesArchitecture = results.summaries?.architecture ?? {}
+
+  const summary: ArchitectureSummary =
+    architecture.summary ?? summariesArchitecture ?? {}
+
+  const directoryHotspots: ArchitectureDirectoryHotspot[] =
+    architecture.directoryHotspots ?? []
+
+  const fileHotspots: ArchitectureFileHotspot[] =
+    architecture.fileHotspots ?? []
+
+  const possibleGodFiles: ArchitectureFileHotspot[] =
+    architecture.possibleGodFiles ?? []
+
+  const smells: ArchitectureSmell[] = architecture.smells ?? []
+  const recommendations: string[] = architecture.recommendations ?? []
+
+  return {
+    summary,
+    directoryHotspots,
+    fileHotspots,
+    possibleGodFiles,
+    smells,
+    recommendations,
+    hasArchitecture:
+      !!summary?.architectureRiskLevel ||
+      directoryHotspots.length > 0 ||
+      fileHotspots.length > 0 ||
+      possibleGodFiles.length > 0 ||
+      smells.length > 0 ||
+      recommendations.length > 0,
+  }
 }
 
 function normalizeMl(results: Results) {
@@ -393,6 +485,7 @@ export function ReportView({
   const normalizedFindings = normalizeFindingsForTable(safeFindings)
   const counts = severityCounts(safeFindings)
   const topFindings = normalizedFindings.slice(0, 6)
+  const languages = normalizeLanguages(results)
 
   const {
     riskPrediction,
@@ -403,6 +496,16 @@ export function ReportView({
     nextActions,
     summaryText,
   } = normalizeMl(results)
+
+  const {
+    summary: architectureSummary,
+    directoryHotspots,
+    fileHotspots,
+    possibleGodFiles,
+    smells: architectureSmells,
+    recommendations: architectureRecommendations,
+    hasArchitecture,
+  } = normalizeArchitecture(results)
 
   const fixSuggestionsState = normalizeFixSuggestions(results)
   const refactorTargetsState = normalizeRefactorTargets(results, topContributingFiles)
@@ -485,6 +588,126 @@ export function ReportView({
           </CardContent>
         </Card>
       </div>
+
+      {hasArchitecture && (
+        <>
+          <Separator />
+
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Architecture Insights</h2>
+              <p className="text-sm text-muted-foreground">
+                Structural signals based on file size, hotspot concentration, clustered findings, and directory-level pressure.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Architecture Risk</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  <div className="text-3xl font-semibold">
+                    {titleCase(architectureSummary.architectureRiskLevel)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Score: {formatScore(architectureSummary.architectureRiskScore)}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>God Files</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-semibold">
+                    {architectureSummary.possibleGodFiles ?? 0}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Possible overloaded files</div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Hotspot Directories</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-semibold">
+                    {architectureSummary.hotspotDirectories ?? 0}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Folders with structural pressure</div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Architecture Smells</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-semibold">
+                    {architectureSummary.architectureSmells ?? 0}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Heuristic smell signals</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Architecture smells</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {architectureSmells.length ? (
+                    architectureSmells.map((smell, index) => (
+                      <div key={smell.id ?? `arch-smell-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="text-sm font-medium">
+                            {smell.title ?? `Architecture smell #${index + 1}`}
+                          </div>
+                          <Badge variant="outline">{titleCase(smell.severity)}</Badge>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {smell.message ?? "No description available."}
+                        </div>
+                        {smell.recommendation && (
+                          <div className="text-sm text-muted-foreground">
+                            Recommendation: {smell.recommendation}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No architecture smells detected for this scan.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Architecture recommendations</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {architectureRecommendations.length ? (
+                    <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                      {architectureRecommendations.map((item, index) => (
+                        <li key={`${item}-${index}`}>{item}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No architecture recommendations available.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </>
+      )}
 
       {hasMlInsights && (
         <>
@@ -680,11 +903,12 @@ export function ReportView({
       <Separator />
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="quality">Quality</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="complexity">Complexity</TabsTrigger>
+          <TabsTrigger value="architecture">Architecture</TabsTrigger>
           <TabsTrigger value="fixes">Fixes</TabsTrigger>
         </TabsList>
 
@@ -704,12 +928,7 @@ export function ReportView({
                 <CardTitle>Languages</CardTitle>
               </CardHeader>
               <CardContent>
-                <LanguageChart
-                  languages={Object.entries(results.metrics.languages).map(([name, percent]) => ({
-                    name,
-                    percent,
-                  }))}
-                />
+                <LanguageChart languages={languages} />
               </CardContent>
             </Card>
           </div>
@@ -756,7 +975,7 @@ export function ReportView({
               <CardTitle>Complexity hotspots</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {results.metrics.complexityHotspots.map((h, i) => (
+              {(results.metrics?.complexityHotspots ?? []).map((h: any, i: number) => (
                 <div
                   key={`${h.filePath}-${h.score}-${i}`}
                   className="flex items-center justify-between rounded-md border px-3 py-2"
@@ -778,6 +997,123 @@ export function ReportView({
               />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="architecture" className="mt-6 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Directory hotspots</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {directoryHotspots.length ? (
+                directoryHotspots.map((item, index) => (
+                  <div
+                    key={`${item.directoryPath}-${index}`}
+                    className="rounded-md border px-3 py-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-mono text-xs break-all">
+                        {item.directoryPath || "."}
+                      </div>
+                      <div className="text-sm font-semibold">
+                        {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                      <span>Files: {item.fileCount ?? 0}</span>
+                      <span>LOC: {item.loc ?? 0}</span>
+                      <span>LOC share: {item.locShare ?? 0}%</span>
+                      <span>Issues: {item.issueCount ?? 0}</span>
+                      <span>Hotspots: {item.hotspotCount ?? 0}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No directory hotspot data available.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Possible god files</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {possibleGodFiles.length ? (
+                  possibleGodFiles.map((item, index) => (
+                    <div key={`${item.filePath}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-mono text-xs break-all">{item.filePath}</div>
+                        <Badge variant="outline">
+                          {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
+                        </Badge>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                        <span>LOC: {item.loc ?? 0}</span>
+                        <span>Findings: {item.findingCount ?? 0}</span>
+                        <span>Hotspot: {item.hotspotScore ?? 0}</span>
+                      </div>
+
+                      {!!item.reasons?.length && (
+                        <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                          {item.reasons.map((reason, reasonIndex) => (
+                            <li key={`${item.filePath}-reason-${reasonIndex}`}>{reason}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No possible god files detected.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>File hotspots</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {fileHotspots.length ? (
+                  fileHotspots.map((item, index) => (
+                    <div key={`${item.filePath}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-mono text-xs break-all">{item.filePath}</div>
+                        <Badge variant="outline">
+                          {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
+                        </Badge>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                        <span>LOC: {item.loc ?? 0}</span>
+                        <span>Findings: {item.findingCount ?? 0}</span>
+                        <span>Hotspot: {item.hotspotScore ?? 0}</span>
+                      </div>
+
+                      {!!item.reasons?.length && (
+                        <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                          {item.reasons.map((reason, reasonIndex) => (
+                            <li key={`${item.filePath}-reason-${reasonIndex}`}>{reason}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No file hotspot data available.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="fixes" className="mt-6 space-y-4">

@@ -24,6 +24,7 @@ def build_result_payload(
     top_files_to_fix: list[dict],
     file_features: list[dict],
     file_feature_summary: dict,
+    architecture: dict | None = None,
     meta: dict | None = None,
     pr_summary: dict | None = None,
     ml: dict | None = None,
@@ -62,6 +63,9 @@ def build_result_payload(
             "topRiskyFiles": [],
         },
     }
+
+    if architecture is not None:
+        summaries["architecture"] = architecture.get("summary", {})
 
     if pr_summary is not None:
         summaries["pr"] = pr_summary
@@ -115,6 +119,9 @@ def build_result_payload(
         "finding_groups": finding_groups,
         "recommendations": recommendations,
     }
+
+    if architecture is not None:
+        result["architecture"] = architecture
 
     if pr_summary is not None:
         result["pr_summary"] = pr_summary

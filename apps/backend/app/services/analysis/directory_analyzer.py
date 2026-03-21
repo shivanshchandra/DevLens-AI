@@ -19,6 +19,7 @@ from app.services.analysis.file_feature_extractor import (
     build_file_features,
     summarize_file_features,
 )
+from app.services.analysis.architecture_detector import detect_architecture_signals
 from app.services.analysis.result_builder import build_result_payload
 
 
@@ -138,6 +139,12 @@ def analyze_directory(
         file_locs=file_locs,
     )
 
+    architecture = detect_architecture_signals(
+        file_locs=file_locs,
+        findings=findings,
+        complexity_hotspots=complexity_hotspots,
+    )
+
     risk_counts = _risk_severity_counts(risk_findings)
 
     scores = compute_scores(
@@ -177,6 +184,6 @@ def analyze_directory(
         top_files_to_fix=top_files_to_fix,
         file_features=file_features,
         file_feature_summary=file_feature_summary,
+        architecture=architecture,
         meta=meta,
     )
-
