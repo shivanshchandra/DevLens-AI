@@ -63,7 +63,12 @@ type NormalizedRefactorTarget = {
   estimatedEffort?: string
   recommendedAction?: string
   reasons: string[]
-  source: "backend_top_files_to_fix" | "recommendations_topFilesToFix" | "ml_refactorPriority" | "topContributingFiles" | "complexityHotspots"
+  source:
+    | "backend_top_files_to_fix"
+    | "recommendations_topFilesToFix"
+    | "ml_refactorPriority"
+    | "topContributingFiles"
+    | "complexityHotspots"
 }
 
 type ArchitectureSummary = {
@@ -74,6 +79,10 @@ type ArchitectureSummary = {
   architectureSmells?: number
   architectureRiskScore?: number
   architectureRiskLevel?: string
+  couplingHotspots?: number
+  dependencyHubs?: number
+  boundaryWarnings?: number
+  directoryCouplingHotspots?: number
 }
 
 type ArchitectureDirectoryHotspot = {
@@ -101,6 +110,36 @@ type ArchitectureSmell = {
   severity?: string
   message?: string
   recommendation?: string
+}
+
+type CouplingHotspot = {
+  filePath: string
+  internalImportCount?: number
+  internalInboundCount?: number
+  score?: number
+  reasons?: string[]
+}
+
+type DependencyHub = {
+  filePath: string
+  inboundDependencyCount?: number
+  score?: number
+  reasons?: string[]
+}
+
+type BoundaryWarning = {
+  sourceDirectory: string
+  targetDirectory: string
+  crossImportCount?: number
+  severity?: string
+  message?: string
+}
+
+type DirectoryCouplingHotspot = {
+  directoryPath: string
+  crossImportCount?: number
+  uniqueTargetDirectories?: number
+  score?: number
 }
 
 function normalizeFindingsForTable(findings: Finding[]): FindingsTableItem[] {
@@ -174,6 +213,11 @@ function normalizeArchitecture(results: Results) {
 
   const smells: ArchitectureSmell[] = architecture.smells ?? []
   const recommendations: string[] = architecture.recommendations ?? []
+  const couplingHotspots: CouplingHotspot[] = architecture.couplingHotspots ?? []
+  const dependencyHubs: DependencyHub[] = architecture.dependencyHubs ?? []
+  const boundaryWarnings: BoundaryWarning[] = architecture.boundaryWarnings ?? []
+  const directoryCouplingHotspots: DirectoryCouplingHotspot[] =
+    architecture.directoryCouplingHotspots ?? []
 
   return {
     summary,
@@ -182,13 +226,21 @@ function normalizeArchitecture(results: Results) {
     possibleGodFiles,
     smells,
     recommendations,
+    couplingHotspots,
+    dependencyHubs,
+    boundaryWarnings,
+    directoryCouplingHotspots,
     hasArchitecture:
       !!summary?.architectureRiskLevel ||
       directoryHotspots.length > 0 ||
       fileHotspots.length > 0 ||
       possibleGodFiles.length > 0 ||
       smells.length > 0 ||
-      recommendations.length > 0,
+      recommendations.length > 0 ||
+      couplingHotspots.length > 0 ||
+      dependencyHubs.length > 0 ||
+      boundaryWarnings.length > 0 ||
+      directoryCouplingHotspots.length > 0,
   }
 }
 
@@ -504,6 +556,10 @@ export function ReportView({
     possibleGodFiles,
     smells: architectureSmells,
     recommendations: architectureRecommendations,
+    couplingHotspots,
+    dependencyHubs,
+    boundaryWarnings,
+    directoryCouplingHotspots,
     hasArchitecture,
   } = normalizeArchitecture(results)
 
@@ -597,7 +653,7 @@ export function ReportView({
             <div>
               <h2 className="text-xl font-semibold tracking-tight">Architecture Insights</h2>
               <p className="text-sm text-muted-foreground">
-                Structural signals based on file size, hotspot concentration, clustered findings, and directory-level pressure.
+                Structural signals based on file size, hotspot concentration, clustered findings, and module coupling pressure.
               </p>
             </div>
 
@@ -630,25 +686,25 @@ export function ReportView({
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Hotspot Directories</CardTitle>
+                  <CardTitle>Coupling Hotspots</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-semibold">
-                    {architectureSummary.hotspotDirectories ?? 0}
+                    {architectureSummary.couplingHotspots ?? 0}
                   </div>
-                  <div className="text-sm text-muted-foreground">Folders with structural pressure</div>
+                  <div className="text-sm text-muted-foreground">Highly connected files</div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Architecture Smells</CardTitle>
+                  <CardTitle>Boundary Warnings</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-semibold">
-                    {architectureSummary.architectureSmells ?? 0}
+                    {architectureSummary.boundaryWarnings ?? 0}
                   </div>
-                  <div className="text-sm text-muted-foreground">Heuristic smell signals</div>
+                  <div className="text-sm text-muted-foreground">Cross-directory pressure</div>
                 </CardContent>
               </Card>
             </div>
@@ -1109,6 +1165,144 @@ export function ReportView({
                 ) : (
                   <p className="text-sm text-muted-foreground">
                     No file hotspot data available.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Coupling hotspots</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {couplingHotspots.length ? (
+                  couplingHotspots.map((item, index) => (
+                    <div key={`${item.filePath}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-mono text-xs break-all">{item.filePath}</div>
+                        <Badge variant="outline">
+                          {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
+                        </Badge>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                        <span>Internal imports: {item.internalImportCount ?? 0}</span>
+                        <span>Inbound deps: {item.internalInboundCount ?? 0}</span>
+                      </div>
+
+                      {!!item.reasons?.length && (
+                        <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                          {item.reasons.map((reason, reasonIndex) => (
+                            <li key={`${item.filePath}-reason-${reasonIndex}`}>{reason}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No coupling hotspot data available.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Dependency hubs</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {dependencyHubs.length ? (
+                  dependencyHubs.map((item, index) => (
+                    <div key={`${item.filePath}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-mono text-xs break-all">{item.filePath}</div>
+                        <Badge variant="outline">
+                          {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
+                        </Badge>
+                      </div>
+
+                      <div className="text-sm text-muted-foreground">
+                        Inbound dependencies: {item.inboundDependencyCount ?? 0}
+                      </div>
+
+                      {!!item.reasons?.length && (
+                        <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                          {item.reasons.map((reason, reasonIndex) => (
+                            <li key={`${item.filePath}-reason-${reasonIndex}`}>{reason}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No dependency hub data available.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Boundary warnings</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {boundaryWarnings.length ? (
+                  boundaryWarnings.map((item, index) => (
+                    <div key={`${item.sourceDirectory}-${item.targetDirectory}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-medium">
+                          {item.sourceDirectory} → {item.targetDirectory}
+                        </div>
+                        <Badge variant="outline">{titleCase(item.severity)}</Badge>
+                      </div>
+
+                      <div className="text-sm text-muted-foreground">
+                        Cross imports: {item.crossImportCount ?? 0}
+                      </div>
+
+                      <div className="text-sm text-muted-foreground">
+                        {item.message ?? "No boundary warning description available."}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No boundary warnings detected.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Directory coupling hotspots</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {directoryCouplingHotspots.length ? (
+                  directoryCouplingHotspots.map((item, index) => (
+                    <div key={`${item.directoryPath}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-mono text-xs break-all">{item.directoryPath}</div>
+                        <Badge variant="outline">
+                          {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
+                        </Badge>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                        <span>Cross imports: {item.crossImportCount ?? 0}</span>
+                        <span>Target dirs: {item.uniqueTargetDirectories ?? 0}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No directory coupling hotspots detected.
                   </p>
                 )}
               </CardContent>

@@ -140,6 +140,7 @@ def analyze_directory(
     )
 
     architecture = detect_architecture_signals(
+        root_dir=str(root),
         file_locs=file_locs,
         findings=findings,
         complexity_hotspots=complexity_hotspots,

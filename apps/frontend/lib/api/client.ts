@@ -145,6 +145,10 @@ export type ArchitectureSummary = {
   architectureSmells?: number
   architectureRiskScore?: number
   architectureRiskLevel?: string
+  couplingHotspots?: number
+  dependencyHubs?: number
+  boundaryWarnings?: number
+  directoryCouplingHotspots?: number
 }
 
 export type ArchitectureDirectoryHotspot = {
@@ -175,6 +179,36 @@ export type ArchitectureSmell = {
   recommendation?: string
 }
 
+export type CouplingHotspot = {
+  filePath: string
+  internalImportCount?: number
+  internalInboundCount?: number
+  score?: number
+  reasons?: string[]
+}
+
+export type DependencyHub = {
+  filePath: string
+  inboundDependencyCount?: number
+  score?: number
+  reasons?: string[]
+}
+
+export type BoundaryWarning = {
+  sourceDirectory: string
+  targetDirectory: string
+  crossImportCount?: number
+  severity?: string
+  message?: string
+}
+
+export type DirectoryCouplingHotspot = {
+  directoryPath: string
+  crossImportCount?: number
+  uniqueTargetDirectories?: number
+  score?: number
+}
+
 export type ArchitectureInsights = {
   summary?: ArchitectureSummary
   directoryHotspots?: ArchitectureDirectoryHotspot[]
@@ -182,6 +216,10 @@ export type ArchitectureInsights = {
   possibleGodFiles?: ArchitectureFileHotspot[]
   smells?: ArchitectureSmell[]
   recommendations?: string[]
+  couplingHotspots?: CouplingHotspot[]
+  dependencyHubs?: DependencyHub[]
+  boundaryWarnings?: BoundaryWarning[]
+  directoryCouplingHotspots?: DirectoryCouplingHotspot[]
 }
 
 export type ScanResults = {

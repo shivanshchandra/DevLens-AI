@@ -1,8 +1,22 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from pathlib import Path
 from typing import Any
+
+from app.services.analysis.import_coupling_analyzer import analyze_import_coupling
+
+
+LOW_SIGNAL_DIR_NAMES = {
+    "tests",
+    "test",
+    "examples",
+    "example",
+    "docs",
+    "doc",
+    ".github",
+    "scripts",
+    "script",
+}
 
 
 def _parent_directory(file_path: str) -> str:
@@ -23,21 +37,65 @@ def _risk_level(score: int) -> str:
     return "low"
 
 
+def _is_low_signal_directory(path_value: str) -> bool:
+    normalized = str(path_value or "").replace("\\", "/").strip("/")
+    if not normalized or normalized == ".":
+        return False
+    parts = [p.lower() for p in normalized.split("/") if p]
+    return any(part in LOW_SIGNAL_DIR_NAMES for part in parts)
+
+
+def _path_weight(path_value: str) -> float:
+    return 0.55 if _is_low_signal_directory(path_value) else 1.0
+
+
+def _confidence_from_file_signals(
+    *,
+    loc: int,
+    finding_count: int,
+    hotspot_score: int,
+    final_score: int,
+    file_path: str,
+) -> str:
+    strong_count = 0
+    if loc >= 800:
+        strong_count += 1
+    if finding_count >= 4:
+        strong_count += 1
+    if hotspot_score >= 70:
+        strong_count += 1
+    if not _is_low_signal_directory(file_path) and final_score >= 60:
+        strong_count += 1
+
+    if strong_count >= 3:
+        return "high"
+    if strong_count >= 2:
+        return "medium"
+    return "low"
+
+
 def detect_architecture_signals(
     *,
+    root_dir: str,
     file_locs: dict[str, int],
     findings: list[dict],
     complexity_hotspots: list[dict],
 ) -> dict[str, Any]:
     """
-    Heuristic architecture detector v1.
+    Architecture detector v2 hardened.
 
-    Goals:
-    - detect code concentration by directory
-    - detect possible god/overloaded files
-    - detect maintainability hotspots by directory/module
-    - produce architecture summary + recommendations
-    - remain fully backward-compatible with current flow
+    Includes:
+    - code concentration by directory
+    - possible god/overloaded files
+    - maintainability hotspots
+    - import coupling hotspots
+    - dependency hubs
+    - boundary warnings
+
+    Hardening:
+    - down-weights low-signal/support folders like tests/examples/docs/.github
+    - adds confidence labels
+    - softens recommendations and risk contribution from noisy folders
     """
     file_locs = file_locs or {}
     findings = findings or []
@@ -79,46 +137,59 @@ def detect_architecture_signals(
         file_findings = findings_by_file.get(normalized_file, [])
         hotspot_score = int(hotspot_map.get(normalized_file, 0))
         finding_count = len(file_findings)
+        weight = _path_weight(normalized_file)
 
         reasons: list[str] = []
-        score = 0
+        raw_score = 0
 
         if loc >= 800:
-            score += 30
+            raw_score += 30
             reasons.append(f"very large file ({loc} LOC)")
         elif loc >= 400:
-            score += 18
+            raw_score += 18
             reasons.append(f"large file ({loc} LOC)")
         elif loc >= 250:
-            score += 8
+            raw_score += 8
             reasons.append(f"moderately large file ({loc} LOC)")
 
         if finding_count >= 6:
-            score += 28
+            raw_score += 28
             reasons.append(f"many findings clustered in one file ({finding_count})")
         elif finding_count >= 3:
-            score += 14
+            raw_score += 14
             reasons.append(f"multiple findings in one file ({finding_count})")
 
         if hotspot_score >= 80:
-            score += 28
+            raw_score += 28
             reasons.append(f"very high complexity hotspot ({hotspot_score})")
         elif hotspot_score >= 60:
-            score += 18
+            raw_score += 18
             reasons.append(f"high complexity hotspot ({hotspot_score})")
         elif hotspot_score >= 40:
-            score += 10
+            raw_score += 10
             reasons.append(f"moderate complexity hotspot ({hotspot_score})")
 
-        if score > 0:
+        final_score = min(100, int(round(raw_score * weight)))
+
+        if score := final_score:
+            if _is_low_signal_directory(normalized_file):
+                reasons.append("signal down-weighted because file is in a support/test-oriented directory")
+
             file_hotspots.append(
                 {
                     "filePath": normalized_file,
                     "loc": loc,
                     "findingCount": finding_count,
                     "hotspotScore": hotspot_score,
-                    "score": min(100, score),
-                    "reasons": reasons[:5],
+                    "score": score,
+                    "confidence": _confidence_from_file_signals(
+                        loc=loc,
+                        finding_count=finding_count,
+                        hotspot_score=hotspot_score,
+                        final_score=score,
+                        file_path=normalized_file,
+                    ),
+                    "reasons": reasons[:6],
                 }
             )
 
@@ -136,33 +207,35 @@ def detect_architecture_signals(
         file_count = int(bucket["fileCount"])
         issue_count = int(bucket["issueCount"])
         hotspot_count = int(bucket["hotspotCount"])
+        weight = _path_weight(directory)
 
-        score = 0
+        raw_score = 0
         if loc >= 3000:
-            score += 30
+            raw_score += 30
         elif loc >= 1500:
-            score += 18
+            raw_score += 18
         elif loc >= 700:
-            score += 10
+            raw_score += 10
 
         if file_count >= 20:
-            score += 20
+            raw_score += 20
         elif file_count >= 10:
-            score += 10
+            raw_score += 10
 
         if issue_count >= 12:
-            score += 22
+            raw_score += 22
         elif issue_count >= 6:
-            score += 12
+            raw_score += 12
         elif issue_count >= 3:
-            score += 6
+            raw_score += 6
 
         if hotspot_count >= 4:
-            score += 18
+            raw_score += 18
         elif hotspot_count >= 2:
-            score += 10
+            raw_score += 10
 
         loc_share = round((loc / total_loc) * 100, 1) if total_loc > 0 else 0.0
+        score = min(100, int(round(raw_score * weight)))
 
         directory_hotspots.append(
             {
@@ -172,7 +245,8 @@ def detect_architecture_signals(
                 "locShare": loc_share,
                 "issueCount": issue_count,
                 "hotspotCount": hotspot_count,
-                "score": min(100, score),
+                "score": score,
+                "confidence": "high" if score >= 60 and weight >= 1.0 else "medium" if score >= 30 else "low",
             }
         )
 
@@ -196,17 +270,25 @@ def detect_architecture_signals(
         key=lambda item: (-int(item["score"]), -int(item["loc"]), item["filePath"]),
     )[:8]
 
+    coupling = analyze_import_coupling(root_dir)
+
+    coupling_hotspots = coupling.get("couplingHotspots", [])
+    dependency_hubs = coupling.get("dependencyHubs", [])
+    boundary_warnings = coupling.get("boundaryWarnings", [])
+    directory_coupling_hotspots = coupling.get("directoryCouplingHotspots", [])
+
     smells: list[dict[str, Any]] = []
     recommendations: list[str] = []
 
     if directory_hotspots:
         top_dir = directory_hotspots[0]
-        if float(top_dir["locShare"]) >= 45:
+        if float(top_dir["locShare"]) >= 45 and not _is_low_signal_directory(top_dir["directoryPath"]):
             smells.append(
                 {
                     "id": "ARCH-1",
                     "title": "High directory concentration",
                     "severity": "high" if float(top_dir["locShare"]) >= 60 else "medium",
+                    "confidence": top_dir.get("confidence", "medium"),
                     "message": (
                         f"Directory '{top_dir['directoryPath']}' contains "
                         f"{top_dir['locShare']}% of analyzed LOC, which may indicate structural concentration."
@@ -231,6 +313,7 @@ def detect_architecture_signals(
                 "id": "ARCH-2",
                 "title": "Possible god file detected",
                 "severity": "high" if int(top_file["score"]) >= 70 else "medium",
+                "confidence": top_file.get("confidence", "medium"),
                 "message": (
                     f"File '{top_file['filePath']}' appears overloaded with size/findings/complexity pressure."
                 ),
@@ -248,13 +331,17 @@ def detect_architecture_signals(
             f"Refactor overloaded file '{top_file['filePath']}' into smaller focused modules."
         )
 
-    clustered_dirs = [d for d in directory_hotspots if int(d["hotspotCount"]) >= 2 and int(d["issueCount"]) >= 4]
+    clustered_dirs = [
+        d for d in directory_hotspots
+        if int(d["hotspotCount"]) >= 2 and int(d["issueCount"]) >= 4 and not _is_low_signal_directory(d["directoryPath"])
+    ]
     if clustered_dirs:
         smells.append(
             {
                 "id": "ARCH-3",
                 "title": "Hotspot clustering by directory",
                 "severity": "medium",
+                "confidence": clustered_dirs[0].get("confidence", "medium"),
                 "message": (
                     "Multiple hotspots and findings are concentrated in the same directory, "
                     "which may indicate maintainability bottlenecks."
@@ -276,22 +363,66 @@ def detect_architecture_signals(
             "Review hotspot-heavy directories first and reduce repeated complexity concentration at the module level."
         )
 
+    if dependency_hubs:
+        top_hub = dependency_hubs[0]
+        smells.append(
+            {
+                "id": "ARCH-4",
+                "title": "Dependency hub detected",
+                "severity": "high" if int(top_hub.get("inboundDependencyCount", 0)) >= 7 else "medium",
+                "confidence": top_hub.get("confidence", "medium"),
+                "message": (
+                    f"File '{top_hub['filePath']}' is depended on by many internal files, "
+                    "which may increase blast radius for changes."
+                ),
+                "evidence": top_hub,
+                "recommendation": "Stabilize the public contract of this file or split responsibilities to reduce hub pressure.",
+            }
+        )
+        recommendations.append(
+            f"Review dependency hub '{top_hub['filePath']}' and stabilize its public contract or reduce fan-in around it."
+        )
+
+    if boundary_warnings:
+        top_warning = boundary_warnings[0]
+        smells.append(
+            {
+                "id": "ARCH-5",
+                "title": "Cross-directory boundary pressure",
+                "severity": top_warning.get("severity", "medium"),
+                "confidence": top_warning.get("confidence", "medium"),
+                "message": top_warning.get("message"),
+                "evidence": top_warning,
+                "recommendation": "Tighten module boundaries where cross-directory imports are becoming too frequent.",
+            }
+        )
+        recommendations.append(
+            f"Tighten boundaries between '{top_warning.get('sourceDirectory')}' and '{top_warning.get('targetDirectory')}' where cross-module imports are concentrated."
+        )
+
     if len(possible_god_files) >= 3:
         recommendations.append(
             "Create a focused refactor plan for the top overloaded files before adding more features in those areas."
         )
 
+    if coupling_hotspots:
+        recommendations.append(
+            "Prioritize refactoring files with both high internal import breadth and high inbound dependency pressure."
+        )
+
     if not recommendations:
         recommendations.append(
-            "Architecture signals look relatively stable; continue monitoring large files, hotspot directories, and clustered findings."
+            "Architecture signals look relatively stable; continue monitoring large files, hotspot directories, clustered findings, and coupling hotspots."
         )
 
     architecture_risk_score = min(
         100,
         (
-            min(40, len(possible_god_files) * 10)
-            + min(35, len(smells) * 12)
-            + min(25, sum(1 for d in directory_hotspots if float(d["locShare"]) >= 25) * 8)
+            min(26, len(possible_god_files) * 7)
+            + min(24, len(smells) * 8)
+            + min(18, len([x for x in coupling_hotspots if x.get("confidence") != "low"]) * 4)
+            + min(12, len([x for x in boundary_warnings if x.get("severity") != "low"]) * 6)
+            + min(10, sum(1 for d in directory_hotspots if float(d["locShare"]) >= 25 and not _is_low_signal_directory(d["directoryPath"])) * 5)
         ),
     )
 
@@ -303,6 +434,10 @@ def detect_architecture_signals(
         "architectureSmells": len(smells),
         "architectureRiskScore": architecture_risk_score,
         "architectureRiskLevel": _risk_level(architecture_risk_score),
+        "couplingHotspots": len(coupling_hotspots),
+        "dependencyHubs": len(dependency_hubs),
+        "boundaryWarnings": len(boundary_warnings),
+        "directoryCouplingHotspots": len(directory_coupling_hotspots),
     }
 
     return {
@@ -311,5 +446,9 @@ def detect_architecture_signals(
         "fileHotspots": file_hotspots,
         "possibleGodFiles": possible_god_files,
         "smells": smells,
-        "recommendations": recommendations[:6],
+        "recommendations": recommendations[:8],
+        "couplingHotspots": coupling_hotspots,
+        "dependencyHubs": dependency_hubs,
+        "boundaryWarnings": boundary_warnings,
+        "directoryCouplingHotspots": directory_coupling_hotspots,
     }
