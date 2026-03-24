@@ -28,6 +28,7 @@ def build_result_payload(
     meta: dict | None = None,
     pr_summary: dict | None = None,
     ml: dict | None = None,
+    ai: dict | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """
@@ -79,6 +80,12 @@ def build_result_payload(
             "version": ml.get("version"),
         }
 
+    if ai is not None:
+        summaries["ai"] = {
+            "version": ai.get("version"),
+            "summary": ai.get("summary"),
+        }
+
     finding_groups = {
         "all": findings,
         "secrets": secret_findings,
@@ -128,5 +135,8 @@ def build_result_payload(
 
     if ml is not None:
         result["ml"] = ml
+
+    if ai is not None:
+        result["ai"] = ai
 
     return result

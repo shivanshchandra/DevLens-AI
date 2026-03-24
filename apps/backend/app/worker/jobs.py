@@ -2,7 +2,20 @@ import os
 import uuid
 from pathlib import Path
 
+from app.core.paths import WORKDIR_BASE
 from app.db.session import SessionLocal
+from app.services.ai import generate_ai_insights
+from app.services.analysis.fs_utils import safe_rmtree
+from app.services.analysis.git_utils import (
+    checkout_pull_request_head,
+    checkout_ref,
+    clone_repo,
+)
+from app.services.analysis.github_api import get_pull_request_context
+from app.services.analysis.pr_analyzer import analyze_pull_request
+from app.services.analysis.directory_analyzer import analyze_directory
+from app.services.analysis.zip_utils import safe_extract_zip
+from app.services.ml.inference import run_ml_inference
 from app.services.scan_service import (
     get_scan,
     set_scan_failed,
@@ -10,14 +23,6 @@ from app.services.scan_service import (
     set_scan_result,
     set_scan_status,
 )
-from app.services.analysis.directory_analyzer import analyze_directory
-from app.services.analysis.pr_analyzer import analyze_pull_request
-from app.services.analysis.github_api import get_pull_request_context
-from app.core.paths import WORKDIR_BASE
-from app.services.analysis.zip_utils import safe_extract_zip
-from app.services.analysis.fs_utils import safe_rmtree
-from app.services.analysis.git_utils import clone_repo, checkout_ref, checkout_pull_request_head
-from app.services.ml.inference import run_ml_inference
 
 
 def _attach_ml_result(result: dict) -> dict:
@@ -31,6 +36,20 @@ def _attach_ml_result(result: dict) -> dict:
     except Exception as ml_error:
         result.setdefault("meta", {})
         result["meta"]["mlError"] = str(ml_error)[:300]
+    return result
+
+
+def _attach_ai_result(result: dict) -> dict:
+    """
+    Attach grounded AI insights in a fail-open way.
+
+    If AI insight generation fails, the core scan result should still be saved.
+    """
+    try:
+        result["ai"] = generate_ai_insights(result)
+    except Exception as ai_error:
+        result.setdefault("meta", {})
+        result["meta"]["aiError"] = str(ai_error)[:300]
     return result
 
 
@@ -117,6 +136,7 @@ def run_scan_job(scan_id: str) -> None:
             )
 
             result = _attach_ml_result(result)
+            result = _attach_ai_result(result)
 
             set_scan_progress(
                 db,
@@ -189,6 +209,7 @@ def run_scan_job(scan_id: str) -> None:
             )
 
             result = _attach_ml_result(result)
+            result = _attach_ai_result(result)
 
             set_scan_progress(
                 db,
@@ -275,6 +296,7 @@ def run_scan_job(scan_id: str) -> None:
             )
 
             result = _attach_ml_result(result)
+            result = _attach_ai_result(result)
 
             set_scan_progress(
                 db,
@@ -334,6 +356,7 @@ def run_scan_job(scan_id: str) -> None:
         )
 
         result = _attach_ml_result(result)
+        result = _attach_ai_result(result)
 
         set_scan_progress(
             db,

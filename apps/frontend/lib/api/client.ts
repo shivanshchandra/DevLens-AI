@@ -222,6 +222,38 @@ export type ArchitectureInsights = {
   directoryCouplingHotspots?: DirectoryCouplingHotspot[]
 }
 
+export type AiRiskExplanation = {
+  title?: string
+  level?: string
+  narrative?: string
+  bullets?: string[]
+}
+
+export type AiRefactorPlan = {
+  title?: string
+  steps?: string[]
+}
+
+export type AiInsights = {
+  version?: string
+  summary?: string
+  riskExplanation?: AiRiskExplanation
+  refactorPlan?: AiRefactorPlan
+  grounding?: {
+    healthScore?: number
+    grade?: string
+    totalFindings?: number
+    criticalCount?: number
+    highCount?: number
+    architectureRiskLevel?: string | null
+    couplingHotspots?: number
+    dependencyHubs?: number
+    predictedRiskLevel?: string | null
+    predictedDebtLevel?: string | null
+    topRefactorTargets?: string[]
+  }
+}
+
 export type ScanResults = {
   healthScore: number
   grade: string
@@ -239,6 +271,7 @@ export type ScanResults = {
   }
 
   ml?: MlInsights
+  ai?: AiInsights
   recommendations?: Recommendations
   architecture?: ArchitectureInsights
 
@@ -248,6 +281,7 @@ export type ScanResults = {
     fileFeatures?: Record<string, unknown>
     pr?: Record<string, unknown>
     ml?: Record<string, unknown>
+    ai?: Record<string, unknown>
   }
 
   riskPrediction?: {

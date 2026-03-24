@@ -46,6 +46,37 @@ type MlExplanationDetail = {
   drivers?: string[]
 }
 
+type AiRiskExplanation = {
+  title?: string
+  level?: string
+  narrative?: string
+  bullets?: string[]
+}
+
+type AiRefactorPlan = {
+  title?: string
+  steps?: string[]
+}
+
+type AiInsightsNormalized = {
+  summary?: string
+  riskExplanation?: AiRiskExplanation
+  refactorPlan?: AiRefactorPlan
+  grounding?: {
+    healthScore?: number
+    grade?: string
+    totalFindings?: number
+    criticalCount?: number
+    highCount?: number
+    architectureRiskLevel?: string | null
+    couplingHotspots?: number
+    dependencyHubs?: number
+    predictedRiskLevel?: string | null
+    predictedDebtLevel?: string | null
+    topRefactorTargets?: string[]
+  }
+}
+
 type NormalizedFixSuggestion = {
   id: string
   title: string
@@ -174,7 +205,7 @@ function formatScore(value?: number) {
   return value.toFixed(2)
 }
 
-function titleCase(value?: string) {
+function titleCase(value?: string | null) {
   if (!value) return "—"
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
@@ -309,6 +340,15 @@ function normalizeMl(results: Results) {
     topContributingFiles,
     nextActions,
     summaryText,
+  }
+}
+
+function normalizeAi(results: Results): AiInsightsNormalized {
+  return {
+    summary: results.ai?.summary,
+    riskExplanation: results.ai?.riskExplanation,
+    refactorPlan: results.ai?.refactorPlan,
+    grounding: results.ai?.grounding,
   }
 }
 
@@ -549,6 +589,8 @@ export function ReportView({
     summaryText,
   } = normalizeMl(results)
 
+  const ai = normalizeAi(results)
+
   const {
     summary: architectureSummary,
     directoryHotspots,
@@ -574,6 +616,12 @@ export function ReportView({
     nextActions.length > 0 ||
     !!riskExplanation ||
     !!technicalDebtExplanation
+
+  const hasAiInsights =
+    !!ai.summary ||
+    !!ai.riskExplanation ||
+    !!ai.refactorPlan ||
+    !!ai.grounding
 
   async function copyShare() {
     const url = `${window.location.origin}/report/public/${scanId}`
@@ -644,6 +692,148 @@ export function ReportView({
           </CardContent>
         </Card>
       </div>
+
+      {hasAiInsights && (
+        <>
+          <Separator />
+
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Grounded AI Insights</h2>
+              <p className="text-sm text-muted-foreground">
+                Backend-generated narrative insights grounded in findings, architecture signals, refactor targets, and ML outputs.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>AI Risk Level</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  <div className="text-3xl font-semibold">
+                    {titleCase(ai.riskExplanation?.level)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Combined signal assessment
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Architecture Risk</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  <div className="text-3xl font-semibold">
+                    {titleCase(ai.grounding?.architectureRiskLevel)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Structural pressure
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Predicted Risk</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  <div className="text-3xl font-semibold">
+                    {titleCase(ai.grounding?.predictedRiskLevel)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    ML risk signal
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Predicted Debt</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  <div className="text-3xl font-semibold">
+                    {titleCase(ai.grounding?.predictedDebtLevel)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    ML debt signal
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Executive Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                {ai.summary ?? "No grounded AI summary available for this scan."}
+              </CardContent>
+            </Card>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>{ai.riskExplanation?.title ?? "Risk Explanation"}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    {ai.riskExplanation?.narrative ?? "No grounded risk explanation available."}
+                  </p>
+
+                  {!!ai.riskExplanation?.bullets?.length && (
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Signals</div>
+                      <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                        {ai.riskExplanation.bullets.map((bullet, index) => (
+                          <li key={`${bullet}-${index}`}>{bullet}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>{ai.refactorPlan?.title ?? "Refactor Plan"}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {!!ai.refactorPlan?.steps?.length ? (
+                    <ol className="list-decimal pl-5 text-sm text-muted-foreground space-y-2">
+                      {ai.refactorPlan.steps.map((step, index) => (
+                        <li key={`${step}-${index}`}>{step}</li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No grounded refactor plan available.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Grounding Data</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-3 text-sm text-muted-foreground">
+                <div>Health score: {ai.grounding?.healthScore ?? "—"}</div>
+                <div>Grade: {ai.grounding?.grade ?? "—"}</div>
+                <div>Total findings: {ai.grounding?.totalFindings ?? "—"}</div>
+                <div>Critical findings: {ai.grounding?.criticalCount ?? "—"}</div>
+                <div>High findings: {ai.grounding?.highCount ?? "—"}</div>
+                <div>Coupling hotspots: {ai.grounding?.couplingHotspots ?? "—"}</div>
+                <div>Dependency hubs: {ai.grounding?.dependencyHubs ?? "—"}</div>
+                <div>Architecture risk: {titleCase(ai.grounding?.architectureRiskLevel)}</div>
+                <div>Predicted risk: {titleCase(ai.grounding?.predictedRiskLevel)}</div>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
 
       {hasArchitecture && (
         <>
@@ -771,7 +961,7 @@ export function ReportView({
 
           <div className="space-y-4">
             <div>
-              <h2 className="text-xl font-semibold tracking-tight">AI Insights</h2>
+              <h2 className="text-xl font-semibold tracking-tight">ML Insights</h2>
               <p className="text-sm text-muted-foreground">
                 ML-assisted predictions and explanations generated from scan signals.
               </p>
@@ -808,10 +998,10 @@ export function ReportView({
 
               <Card className="md:col-span-2">
                 <CardHeader>
-                  <CardTitle>AI Summary</CardTitle>
+                  <CardTitle>ML Summary</CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
-                  {summaryText ?? "No AI summary available for this scan."}
+                  {summaryText ?? "No ML summary available for this scan."}
                 </CardContent>
               </Card>
             </div>
