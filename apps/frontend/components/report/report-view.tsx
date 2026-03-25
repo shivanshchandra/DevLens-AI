@@ -1,15 +1,16 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
 
-import { SeverityChart } from "@/components/dashboard/severity-chart"
-import { LanguageChart } from "@/components/dashboard/language-chart"
+import { ScanChat } from "@/components/chat/scan-chat"
 import { FindingsTable } from "@/components/dashboard/findings-table"
+import { LanguageChart } from "@/components/dashboard/language-chart"
+import { SeverityChart } from "@/components/dashboard/severity-chart"
 import type {
   Finding,
   FindingSeverity,
@@ -517,7 +518,8 @@ function normalizeRefactorTargets(
         filePath: item.filePath,
         score: item.score,
         estimatedEffort: undefined,
-        recommendedAction: "Dedicated backend refactor targets were not present, so this fallback uses complexity hotspots.",
+        recommendedAction:
+          "Dedicated backend refactor targets were not present, so this fallback uses complexity hotspots.",
         reasons: ["Complexity hotspot fallback"],
         source: "complexityHotspots",
       })),
@@ -687,7 +689,9 @@ export function ReportView({
             <CardTitle>Maintainability</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">{results.subScores.maintainability}</div>
+            <div className="text-3xl font-semibold">
+              {results.subScores.maintainability}
+            </div>
             <div className="text-sm text-muted-foreground">Sub-score</div>
           </CardContent>
         </Card>
@@ -701,7 +705,8 @@ export function ReportView({
             <div>
               <h2 className="text-xl font-semibold tracking-tight">Grounded AI Insights</h2>
               <p className="text-sm text-muted-foreground">
-                Backend-generated narrative insights grounded in findings, architecture signals, refactor targets, and ML outputs.
+                Backend-generated narrative insights grounded in findings, architecture signals,
+                refactor targets, and ML outputs.
               </p>
             </div>
 
@@ -779,7 +784,8 @@ export function ReportView({
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <p className="text-sm text-muted-foreground">
-                    {ai.riskExplanation?.narrative ?? "No grounded risk explanation available."}
+                    {ai.riskExplanation?.narrative ??
+                      "No grounded risk explanation available."}
                   </p>
 
                   {!!ai.riskExplanation?.bullets?.length && (
@@ -801,7 +807,7 @@ export function ReportView({
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {!!ai.refactorPlan?.steps?.length ? (
-                    <ol className="list-decimal pl-5 text-sm text-muted-foreground space-y-2">
+                    <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
                       {ai.refactorPlan.steps.map((step, index) => (
                         <li key={`${step}-${index}`}>{step}</li>
                       ))}
@@ -819,7 +825,7 @@ export function ReportView({
               <CardHeader>
                 <CardTitle>Grounding Data</CardTitle>
               </CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-3 text-sm text-muted-foreground">
+              <CardContent className="grid gap-3 text-sm text-muted-foreground md:grid-cols-3">
                 <div>Health score: {ai.grounding?.healthScore ?? "—"}</div>
                 <div>Grade: {ai.grounding?.grade ?? "—"}</div>
                 <div>Total findings: {ai.grounding?.totalFindings ?? "—"}</div>
@@ -843,7 +849,8 @@ export function ReportView({
             <div>
               <h2 className="text-xl font-semibold tracking-tight">Architecture Insights</h2>
               <p className="text-sm text-muted-foreground">
-                Structural signals based on file size, hotspot concentration, clustered findings, and module coupling pressure.
+                Structural signals based on file size, hotspot concentration, clustered findings,
+                and module coupling pressure.
               </p>
             </div>
 
@@ -870,7 +877,9 @@ export function ReportView({
                   <div className="text-3xl font-semibold">
                     {architectureSummary.possibleGodFiles ?? 0}
                   </div>
-                  <div className="text-sm text-muted-foreground">Possible overloaded files</div>
+                  <div className="text-sm text-muted-foreground">
+                    Possible overloaded files
+                  </div>
                 </CardContent>
               </Card>
 
@@ -882,7 +891,9 @@ export function ReportView({
                   <div className="text-3xl font-semibold">
                     {architectureSummary.couplingHotspots ?? 0}
                   </div>
-                  <div className="text-sm text-muted-foreground">Highly connected files</div>
+                  <div className="text-sm text-muted-foreground">
+                    Highly connected files
+                  </div>
                 </CardContent>
               </Card>
 
@@ -894,7 +905,9 @@ export function ReportView({
                   <div className="text-3xl font-semibold">
                     {architectureSummary.boundaryWarnings ?? 0}
                   </div>
-                  <div className="text-sm text-muted-foreground">Cross-directory pressure</div>
+                  <div className="text-sm text-muted-foreground">
+                    Cross-directory pressure
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -907,7 +920,10 @@ export function ReportView({
                 <CardContent className="space-y-3">
                   {architectureSmells.length ? (
                     architectureSmells.map((smell, index) => (
-                      <div key={smell.id ?? `arch-smell-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                      <div
+                        key={smell.id ?? `arch-smell-${index}`}
+                        className="space-y-2 rounded-md border px-3 py-3"
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div className="text-sm font-medium">
                             {smell.title ?? `Architecture smell #${index + 1}`}
@@ -1090,7 +1106,7 @@ export function ReportView({
                         className="space-y-2 rounded-md border px-3 py-3"
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <div className="font-mono text-xs break-all">{file.filePath}</div>
+                          <div className="break-all font-mono text-xs">{file.filePath}</div>
                           <Badge variant="outline">
                             {typeof (file.priorityScore ?? file.contributionScore) === "number"
                               ? Number(file.priorityScore ?? file.contributionScore).toFixed(0)
@@ -1149,13 +1165,14 @@ export function ReportView({
       <Separator />
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="quality">Quality</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="complexity">Complexity</TabsTrigger>
           <TabsTrigger value="architecture">Architecture</TabsTrigger>
           <TabsTrigger value="fixes">Fixes</TabsTrigger>
+          <TabsTrigger value="chat">AI Chat</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6 space-y-4">
@@ -1255,10 +1272,10 @@ export function ReportView({
                 directoryHotspots.map((item, index) => (
                   <div
                     key={`${item.directoryPath}-${index}`}
-                    className="rounded-md border px-3 py-3 space-y-2"
+                    className="space-y-2 rounded-md border px-3 py-3"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-mono text-xs break-all">
+                      <div className="break-all font-mono text-xs">
                         {item.directoryPath || "."}
                       </div>
                       <div className="text-sm font-semibold">
@@ -1291,9 +1308,12 @@ export function ReportView({
               <CardContent className="space-y-3">
                 {possibleGodFiles.length ? (
                   possibleGodFiles.map((item, index) => (
-                    <div key={`${item.filePath}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                    <div
+                      key={`${item.filePath}-${index}`}
+                      className="space-y-2 rounded-md border px-3 py-3"
+                    >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="font-mono text-xs break-all">{item.filePath}</div>
+                        <div className="break-all font-mono text-xs">{item.filePath}</div>
                         <Badge variant="outline">
                           {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
                         </Badge>
@@ -1329,9 +1349,12 @@ export function ReportView({
               <CardContent className="space-y-3">
                 {fileHotspots.length ? (
                   fileHotspots.map((item, index) => (
-                    <div key={`${item.filePath}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                    <div
+                      key={`${item.filePath}-${index}`}
+                      className="space-y-2 rounded-md border px-3 py-3"
+                    >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="font-mono text-xs break-all">{item.filePath}</div>
+                        <div className="break-all font-mono text-xs">{item.filePath}</div>
                         <Badge variant="outline">
                           {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
                         </Badge>
@@ -1369,9 +1392,12 @@ export function ReportView({
               <CardContent className="space-y-3">
                 {couplingHotspots.length ? (
                   couplingHotspots.map((item, index) => (
-                    <div key={`${item.filePath}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                    <div
+                      key={`${item.filePath}-${index}`}
+                      className="space-y-2 rounded-md border px-3 py-3"
+                    >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="font-mono text-xs break-all">{item.filePath}</div>
+                        <div className="break-all font-mono text-xs">{item.filePath}</div>
                         <Badge variant="outline">
                           {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
                         </Badge>
@@ -1406,9 +1432,12 @@ export function ReportView({
               <CardContent className="space-y-3">
                 {dependencyHubs.length ? (
                   dependencyHubs.map((item, index) => (
-                    <div key={`${item.filePath}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                    <div
+                      key={`${item.filePath}-${index}`}
+                      className="space-y-2 rounded-md border px-3 py-3"
+                    >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="font-mono text-xs break-all">{item.filePath}</div>
+                        <div className="break-all font-mono text-xs">{item.filePath}</div>
                         <Badge variant="outline">
                           {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
                         </Badge>
@@ -1444,7 +1473,10 @@ export function ReportView({
               <CardContent className="space-y-3">
                 {boundaryWarnings.length ? (
                   boundaryWarnings.map((item, index) => (
-                    <div key={`${item.sourceDirectory}-${item.targetDirectory}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                    <div
+                      key={`${item.sourceDirectory}-${item.targetDirectory}-${index}`}
+                      className="space-y-2 rounded-md border px-3 py-3"
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-sm font-medium">
                           {item.sourceDirectory} → {item.targetDirectory}
@@ -1476,9 +1508,12 @@ export function ReportView({
               <CardContent className="space-y-3">
                 {directoryCouplingHotspots.length ? (
                   directoryCouplingHotspots.map((item, index) => (
-                    <div key={`${item.directoryPath}-${index}`} className="rounded-md border px-3 py-3 space-y-2">
+                    <div
+                      key={`${item.directoryPath}-${index}`}
+                      className="space-y-2 rounded-md border px-3 py-3"
+                    >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="font-mono text-xs break-all">{item.directoryPath}</div>
+                        <div className="break-all font-mono text-xs">{item.directoryPath}</div>
                         <Badge variant="outline">
                           {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
                         </Badge>
@@ -1509,7 +1544,7 @@ export function ReportView({
             <CardContent className="space-y-3">
               {fixSuggestionsState.items.length ? (
                 fixSuggestionsState.items.map((item) => (
-                  <div key={item.id} className="rounded-md border px-3 py-3 space-y-2">
+                  <div key={item.id} className="space-y-2 rounded-md border px-3 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="text-sm font-medium">{item.title}</div>
@@ -1522,7 +1557,7 @@ export function ReportView({
                     </div>
 
                     {item.filePath && (
-                      <div className="font-mono text-xs text-muted-foreground break-all">
+                      <div className="break-all font-mono text-xs text-muted-foreground">
                         {item.filePath}
                       </div>
                     )}
@@ -1556,14 +1591,11 @@ export function ReportView({
             <CardContent className="space-y-3">
               {refactorTargetsState.items.length ? (
                 refactorTargetsState.items.slice(0, 5).map((item, index) => (
-                  <div
-                    key={item.id}
-                    className="rounded-md border px-3 py-3 space-y-2"
-                  >
+                  <div key={item.id} className="space-y-2 rounded-md border px-3 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <Badge variant="outline">#{index + 1}</Badge>
-                        <div className="font-mono text-xs break-all">{item.filePath}</div>
+                        <div className="break-all font-mono text-xs">{item.filePath}</div>
                       </div>
                       <div className="text-sm font-semibold">
                         {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
@@ -1591,6 +1623,10 @@ export function ReportView({
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="chat" className="mt-6 space-y-4">
+          <ScanChat scanId={scanId} />
         </TabsContent>
       </Tabs>
     </div>

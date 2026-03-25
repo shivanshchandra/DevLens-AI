@@ -40,6 +40,13 @@ def get_scan(db: Session, scan_id: uuid.UUID) -> Scan | None:
     return db.get(Scan, scan_id)
 
 
+def get_scan_result(db: Session, scan_id: uuid.UUID) -> dict | None:
+    scan = get_scan(db, scan_id)
+    if not scan:
+        return None
+    return scan.result_json
+
+
 def list_scans(db: Session, limit: int = 20, offset: int = 0) -> list[Scan]:
     return (
         db.query(Scan)

@@ -1,14 +1,17 @@
-import uuid
-from pathlib import Path
 import os
 import shutil
+import uuid
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.schemas.chat import ScanChatRequest, ScanChatResponse
 from app.schemas.scan import ScanCreate, ScanOut, ScanResultOut
-from app.services.scan_service import create_scan, get_scan, list_scans
+from app.services.ai.chat_generator import generate_chat_answer
+from app.services.ai.chat_retriever import retrieve_chat_context
+from app.services.scan_service import create_scan, get_scan, get_scan_result, list_scans
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -102,3 +105,27 @@ def get_results_endpoint(scan_id: uuid.UUID, db: Session = Depends(get_db)):
     if not scan.result_json:
         raise HTTPException(status_code=404, detail="Results not ready yet")
     return {"scan_id": scan.id, "result_json": scan.result_json}
+
+
+@router.post("/{scan_id}/chat", response_model=ScanChatResponse)
+def chat_with_scan_endpoint(
+    scan_id: uuid.UUID,
+    payload: ScanChatRequest,
+    db: Session = Depends(get_db),
+):
+    scan = get_scan(db, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    if not scan.result_json:
+        raise HTTPException(status_code=404, detail="Results not ready yet")
+
+    result_json = get_scan_result(db, scan_id) or {}
+    retrieval = retrieve_chat_context(result_json, payload.question)
+    answer = generate_chat_answer(result_json, retrieval)
+
+    return {
+        "answer": answer,
+        "citations": retrieval["citations"],
+        "matchedSections": retrieval["matchedSections"],
+        "confidence": retrieval["confidence"],
+    }

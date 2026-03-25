@@ -312,6 +312,25 @@ export type ScanResultsResponse = {
   result_json: ScanResults
 }
 
+export type ScanChatRequest = {
+  question: string
+}
+
+export type ScanChatCitation = {
+  type: string
+  label: string
+  filePath?: string | null
+  section?: string | null
+  reason?: string | null
+}
+
+export type ScanChatResponse = {
+  answer: string
+  citations: ScanChatCitation[]
+  matchedSections: string[]
+  confidence: string
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers ?? {})
 
@@ -360,6 +379,13 @@ export function getScan(scanId: string) {
 export function getScanResults(scanId: string) {
   return request<ScanResultsResponse>(`/api/scans/${scanId}/results`, {
     method: "GET",
+  })
+}
+
+export function chatWithScan(scanId: string, body: ScanChatRequest) {
+  return request<ScanChatResponse>(`/api/scans/${scanId}/chat`, {
+    method: "POST",
+    body: JSON.stringify(body),
   })
 }
 
