@@ -12,6 +12,8 @@ from app.schemas.scan import ScanCreate, ScanOut, ScanResultOut
 from app.services.ai.chat_generator import generate_chat_answer
 from app.services.ai.chat_retriever import retrieve_chat_context
 from app.services.scan_service import create_scan, get_scan, get_scan_result, list_scans
+from app.schemas.compare import ScanCompareOut
+from app.services.analysis.compare_results import compare_scan_results
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -87,6 +89,33 @@ def list_scans_endpoint(
     db: Session = Depends(get_db),
 ):
     return list_scans(db, limit=limit, offset=offset)
+
+
+@router.get("/compare", response_model=ScanCompareOut)
+def compare_scans_endpoint(
+    base_scan_id: uuid.UUID = Query(...),
+    target_scan_id: uuid.UUID = Query(...),
+    db: Session = Depends(get_db),
+):
+    if base_scan_id == target_scan_id:
+        raise HTTPException(status_code=400, detail="base_scan_id and target_scan_id must be different")
+
+    base_scan = get_scan(db, base_scan_id)
+    target_scan = get_scan(db, target_scan_id)
+
+    if not base_scan or not target_scan:
+        raise HTTPException(status_code=404, detail="One or both scans were not found")
+
+    if not base_scan.result_json or not target_scan.result_json:
+        raise HTTPException(status_code=400, detail="Both scans must have completed results")
+
+    comparison = compare_scan_results(base_scan.result_json, target_scan.result_json)
+
+    return {
+        "baseScanId": base_scan.id,
+        "targetScanId": target_scan.id,
+        **comparison,
+    }
 
 
 @router.get("/{scan_id}", response_model=ScanOut)
