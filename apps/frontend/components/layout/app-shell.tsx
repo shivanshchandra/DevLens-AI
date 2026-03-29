@@ -12,10 +12,21 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="space-y-1 text-sm">
-            <Link className="block rounded-md px-3 py-2 hover:bg-accent" href="/">Home</Link>
-            <Link className="block rounded-md px-3 py-2 hover:bg-accent" href="/analyze">Analyze</Link>
-            <Link className="block rounded-md px-3 py-2 hover:bg-accent" href="/history">History</Link>
-            <Link className="block rounded-md px-3 py-2 hover:bg-accent" href="/compare">Compare</Link>
+            <Link className="block rounded-md px-3 py-2 hover:bg-accent" href="/">
+              Home
+            </Link>
+            <Link className="block rounded-md px-3 py-2 hover:bg-accent" href="/analyze">
+              Analyze
+            </Link>
+            <Link className="block rounded-md px-3 py-2 hover:bg-accent" href="/history">
+              History
+            </Link>
+            <Link className="block rounded-md px-3 py-2 hover:bg-accent" href="/compare">
+              Compare
+            </Link>
+            <Link className="block rounded-md px-3 py-2 hover:bg-accent" href="/team">
+              Team Mode
+            </Link>
           </nav>
         </aside>
 

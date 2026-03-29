@@ -419,6 +419,62 @@ export type ScanCompareResponse = {
   ml: CompareMlSection
 }
 
+export type TeamDistributionItem = {
+  label: string
+  count: number
+}
+
+export type TeamOverviewSummary = {
+  total_scans: number
+  completed_scans: number
+  average_health_score: number | null
+  average_predicted_risk_score: number | null
+  average_predicted_debt_score: number | null
+}
+
+export type TeamRepoRiskItem = {
+  repo_key: string
+  repo_label: string
+  completed_scans: number
+  average_health_score: number | null
+  average_predicted_risk_score: number | null
+  average_predicted_debt_score: number | null
+  latest_scan_id: string | null
+  latest_scan_created_at: string | null
+}
+
+export type TeamTrendItem = {
+  date: string
+  completed_scans: number
+  average_health_score: number | null
+  average_predicted_risk_score: number | null
+  average_predicted_debt_score: number | null
+}
+
+export type TeamLatestCompletedScan = {
+  scan_id: string
+  repo_key: string
+  repo_label: string
+  source_type: string
+  status: string
+  health_score: number | null
+  grade: string | null
+  predicted_risk_score: number | null
+  predicted_risk_level: string | null
+  predicted_debt_score: number | null
+  predicted_debt_level: string | null
+  created_at: string
+}
+
+export type TeamOverviewResponse = {
+  summary: TeamOverviewSummary
+  grade_distribution: TeamDistributionItem[]
+  risk_level_distribution: TeamDistributionItem[]
+  top_risky_repos: TeamRepoRiskItem[]
+  recent_trend: TeamTrendItem[]
+  latest_completed_scans: TeamLatestCompletedScan[]
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers ?? {})
 
@@ -491,6 +547,15 @@ export function listScans(limit = 20, offset = 0) {
     `/api/scans?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(
       offset
     )}`,
+    { method: "GET" }
+  )
+}
+
+export function getTeamOverview(trendDays = 14, latestLimit = 10) {
+  return request<TeamOverviewResponse>(
+    `/api/team/overview?trend_days=${encodeURIComponent(
+      trendDays
+    )}&latest_limit=${encodeURIComponent(latestLimit)}`,
     { method: "GET" }
   )
 }
