@@ -2,60 +2,66 @@
 
 import { useEffect, useState } from "react"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ErrorState } from "@/components/shared/error-state"
-import { getScanResults, type ScanResults } from "@/lib/api/client"
+import {
+  compareScans,
+  type CompareRefactorFileChange,
+  type ScanCompareResponse,
+} from "@/lib/api/client"
 
-function delta(a: number, b: number) {
-  const d = b - a
-  return d === 0 ? "0" : d > 0 ? `+${d}` : `${d}`
+function formatDelta(value: number | null | undefined, inverseGood = false) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "—"
+  if (value === 0) return "0"
+  const prefix = value > 0 ? "+" : ""
+  const formatted = Number.isInteger(value) ? `${prefix}${value}` : `${prefix}${value.toFixed(2)}`
+  return inverseGood ? formatted : formatted
 }
 
-function deltaBadge(d: number) {
-  if (d > 0) return <Badge variant="outline">Improved</Badge>
-  if (d < 0) return <Badge variant="destructive">Regressed</Badge>
+function verdictBadge(verdict: ScanCompareResponse["verdict"]) {
+  if (verdict === "improved") return <Badge variant="outline">Improved</Badge>
+  if (verdict === "regressed") return <Badge variant="destructive">Regressed</Badge>
+  return <Badge variant="secondary">Unchanged</Badge>
+}
+
+function deltaBadge(value: number, inverseGood = false) {
+  const improved = inverseGood ? value < 0 : value > 0
+  const regressed = inverseGood ? value > 0 : value < 0
+
+  if (improved) return <Badge variant="outline">Improved</Badge>
+  if (regressed) return <Badge variant="destructive">Regressed</Badge>
   return <Badge variant="secondary">No change</Badge>
 }
 
-function formatScore(value?: number) {
-  if (typeof value !== "number" || Number.isNaN(value)) return "—"
-  return value.toFixed(2)
-}
-
-function normalizeMl(results: ScanResults) {
-  const ml = results.ml ?? {}
-  const summary = ml.summary
-
-  const riskPrediction =
-    ml.riskPrediction ??
-    results.riskPrediction ??
-    (summary && typeof summary !== "string"
-      ? {
-          score: summary.predictedRiskScore,
-          level: summary.predictedRiskLevel,
-        }
-      : undefined)
-
-  const technicalDebtPrediction =
-    ml.technicalDebtPrediction ??
-    results.technicalDebtPrediction ??
-    (summary && typeof summary !== "string"
-      ? {
-          score: summary.predictedDebtScore,
-          level: summary.predictedDebtLevel,
-        }
-      : undefined)
-
-  return {
-    riskPrediction,
-    technicalDebtPrediction,
+function directionBadge(direction: CompareRefactorFileChange["direction"]) {
+  switch (direction) {
+    case "regressed":
+      return <Badge variant="destructive">Regressed</Badge>
+    case "new":
+      return <Badge variant="destructive">New</Badge>
+    case "improved":
+      return <Badge variant="outline">Improved</Badge>
+    case "resolved":
+      return <Badge variant="secondary">Resolved</Badge>
+    default:
+      return <Badge variant="secondary">Unchanged</Badge>
   }
 }
 
+function severityDeltaRows(
+  deltas: ScanCompareResponse["findings"]["deltas"]
+) {
+  return [
+    { label: "Critical", value: deltas.critical },
+    { label: "High", value: deltas.high },
+    { label: "Medium", value: deltas.medium },
+    { label: "Low", value: deltas.low },
+  ]
+}
+
 export function CompareView({ a, b }: { a: string; b: string }) {
-  const [A, setAResults] = useState<ScanResults | null>(null)
-  const [B, setBResults] = useState<ScanResults | null>(null)
+  const [comparison, setComparison] = useState<ScanCompareResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -67,11 +73,10 @@ export function CompareView({ a, b }: { a: string; b: string }) {
         setLoading(true)
         setError(null)
 
-        const [aRes, bRes] = await Promise.all([getScanResults(a), getScanResults(b)])
+        const result = await compareScans(a, b)
         if (!mounted) return
 
-        setAResults(aRes.result_json)
-        setBResults(bRes.result_json)
+        setComparison(result)
       } catch (e: any) {
         if (!mounted) return
         setError(e?.message ?? "Failed to load comparison results.")
@@ -99,58 +104,39 @@ export function CompareView({ a, b }: { a: string; b: string }) {
             <CardTitle>Loading comparison…</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Fetching scan results from backend.
+            Fetching comparison data from backend.
           </CardContent>
         </Card>
       </div>
     )
   }
 
-  if (error || !A || !B) {
+  if (error || !comparison) {
     return (
       <ErrorState
-        title="Missing results"
-        description={error ?? "One of the selected scans doesn't have results available."}
+        title="Missing comparison"
+        description={error ?? "Unable to load comparison for the selected scans."}
       />
     )
   }
 
-  const healthDelta = B.healthScore - A.healthScore
-  const qualityDelta = B.subScores.quality - A.subScores.quality
-  const securityDelta = B.subScores.security - A.subScores.security
-  const maintainabilityDelta = B.subScores.maintainability - A.subScores.maintainability
-  const findingsDelta = (B.findings?.length ?? 0) - (A.findings?.length ?? 0)
-
-  const mlA = normalizeMl(A)
-  const mlB = normalizeMl(B)
-
-  const riskScoreA = mlA.riskPrediction?.score
-  const riskScoreB = mlB.riskPrediction?.score
-  const debtScoreA = mlA.technicalDebtPrediction?.score
-  const debtScoreB = mlB.technicalDebtPrediction?.score
-
-  const riskDelta =
-    typeof riskScoreA === "number" && typeof riskScoreB === "number"
-      ? riskScoreB - riskScoreA
-      : null
-
-  const debtDelta =
-    typeof debtScoreA === "number" && typeof debtScoreB === "number"
-      ? debtScoreB - debtScoreA
-      : null
+  const { verdict, summary, overview, findings, architecture, ml, refactor } = comparison
 
   return (
     <div className="grid gap-4 md:grid-cols-3">
       <Card className="md:col-span-3">
         <CardHeader>
-          <CardTitle>Overview</CardTitle>
+          <CardTitle>Comparison overview</CardTitle>
         </CardHeader>
-        <CardContent className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            Comparing <span className="font-mono">{a.slice(0, 8)}</span> →{" "}
-            <span className="font-mono">{b.slice(0, 8)}</span>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-muted-foreground">
+              Comparing <span className="font-mono">{a.slice(0, 8)}</span> →{" "}
+              <span className="font-mono">{b.slice(0, 8)}</span>
+            </div>
+            {verdictBadge(verdict)}
           </div>
-          {deltaBadge(healthDelta)}
+          <p className="text-sm text-muted-foreground">{summary}</p>
         </CardContent>
       </Card>
 
@@ -158,91 +144,213 @@ export function CompareView({ a, b }: { a: string; b: string }) {
         <CardHeader>
           <CardTitle>Health</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1">
-          <div className="text-3xl font-semibold">{B.healthScore}</div>
+        <CardContent className="space-y-2">
+          <div className="text-3xl font-semibold">{overview.targetHealthScore ?? "—"}</div>
           <div className="text-sm text-muted-foreground">
-            Δ {delta(A.healthScore, B.healthScore)}
+            Base: {overview.baseHealthScore ?? "—"} → Target: {overview.targetHealthScore ?? "—"}
+          </div>
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>Δ {formatDelta(overview.healthScoreDelta)}</span>
+            {deltaBadge(overview.healthScoreDelta)}
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Quality</CardTitle>
+          <CardTitle>Grade</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1">
-          <div className="text-3xl font-semibold">{B.subScores.quality}</div>
-          <div className="text-sm text-muted-foreground">Δ {delta(A.subScores.quality, B.subScores.quality)}</div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Security</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          <div className="text-3xl font-semibold">{B.subScores.security}</div>
+        <CardContent className="space-y-2">
+          <div className="text-3xl font-semibold">{overview.targetGrade ?? "—"}</div>
           <div className="text-sm text-muted-foreground">
-            Δ {delta(A.subScores.security, B.subScores.security)}
+            Base: {overview.baseGrade ?? "—"} → Target: {overview.targetGrade ?? "—"}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {overview.gradeChanged ? "Grade changed" : "No grade change"}
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Maintainability</CardTitle>
+          <CardTitle>New vs resolved</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1">
-          <div className="text-3xl font-semibold">{B.subScores.maintainability}</div>
+        <CardContent className="space-y-2">
+          <div className="text-3xl font-semibold">
+            {findings.newFindings.length} / {findings.resolvedFindings.length}
+          </div>
           <div className="text-sm text-muted-foreground">
-            Δ {delta(A.subScores.maintainability, B.subScores.maintainability)}
+            New findings / resolved findings
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Findings</CardTitle>
+          <CardTitle>Severity deltas</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1">
-          <div className="text-3xl font-semibold">{B.findings?.length ?? 0}</div>
+        <CardContent className="space-y-3">
+          {severityDeltaRows(findings.deltas).map((item) => (
+            <div key={item.label} className="flex items-center justify-between text-sm">
+              <span>{item.label}</span>
+              <span className="font-medium">Δ {formatDelta(item.value)}</span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Architecture risk</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="text-3xl font-semibold">{architecture.targetRiskScore}</div>
           <div className="text-sm text-muted-foreground">
-            Δ {delta(A.findings?.length ?? 0, B.findings?.length ?? 0)}
+            Base: {architecture.baseRiskScore} → Target: {architecture.targetRiskScore}
+          </div>
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>Δ {formatDelta(architecture.riskDelta)}</span>
+            {deltaBadge(architecture.riskDelta, true)}
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Predicted Risk</CardTitle>
+          <CardTitle>Predicted risk</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1">
-          <div className="text-xl font-semibold">
-            {mlB.riskPrediction?.level ?? "—"}
-          </div>
+        <CardContent className="space-y-2">
+          <div className="text-xl font-semibold">{ml.targetPredictedRiskLevel ?? "—"}</div>
           <div className="text-sm text-muted-foreground">
-            Score: {formatScore(riskScoreB)}
+            Score: {ml.targetPredictedRiskScore ?? "—"}
           </div>
-          <div className="text-sm text-muted-foreground">
-            Δ {riskDelta === null ? "—" : delta(riskScoreA ?? 0, riskScoreB ?? 0)}
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>Δ {formatDelta(ml.riskScoreDelta)}</span>
+            {deltaBadge(ml.riskScoreDelta, true)}
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Predicted Debt</CardTitle>
+          <CardTitle>Predicted debt</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1">
-          <div className="text-xl font-semibold">
-            {mlB.technicalDebtPrediction?.level ?? "—"}
-          </div>
+        <CardContent className="space-y-2">
+          <div className="text-xl font-semibold">{ml.targetPredictedDebtLevel ?? "—"}</div>
           <div className="text-sm text-muted-foreground">
-            Score: {formatScore(debtScoreB)}
+            Score: {ml.targetPredictedDebtScore ?? "—"}
           </div>
-          <div className="text-sm text-muted-foreground">
-            Δ {debtDelta === null ? "—" : delta(debtScoreA ?? 0, debtScoreB ?? 0)}
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>Δ {formatDelta(ml.debtScoreDelta)}</span>
+            {deltaBadge(ml.debtScoreDelta, true)}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="md:col-span-3">
+        <CardHeader>
+          <CardTitle>Architecture detail deltas</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-3">
+          <div className="text-sm">
+            <div className="font-medium">God files</div>
+            <div className="text-muted-foreground">Δ {formatDelta(architecture.possibleGodFilesDelta)}</div>
+          </div>
+          <div className="text-sm">
+            <div className="font-medium">Hotspot directories</div>
+            <div className="text-muted-foreground">Δ {formatDelta(architecture.hotspotDirectoriesDelta)}</div>
+          </div>
+          <div className="text-sm">
+            <div className="font-medium">Architecture smells</div>
+            <div className="text-muted-foreground">Δ {formatDelta(architecture.architectureSmellsDelta)}</div>
+          </div>
+          <div className="text-sm">
+            <div className="font-medium">Coupling hotspots</div>
+            <div className="text-muted-foreground">Δ {formatDelta(architecture.couplingHotspotsDelta)}</div>
+          </div>
+          <div className="text-sm">
+            <div className="font-medium">Dependency hubs</div>
+            <div className="text-muted-foreground">Δ {formatDelta(architecture.dependencyHubsDelta)}</div>
+          </div>
+          <div className="text-sm">
+            <div className="font-medium">Boundary warnings</div>
+            <div className="text-muted-foreground">Δ {formatDelta(architecture.boundaryWarningsDelta)}</div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="md:col-span-3">
+        <CardHeader>
+          <CardTitle>Top changed files</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {refactor.topChangedFiles.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No refactor priority movement detected.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {refactor.topChangedFiles.map((file) => (
+                <div
+                  key={file.filePath}
+                  className="flex flex-col gap-2 rounded-lg border p-3 md:flex-row md:items-center md:justify-between"
+                >
+                  <div>
+                    <div className="font-mono text-sm">{file.filePath}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Base rank: {file.baseRank ?? "—"} → Target rank: {file.targetRank ?? "—"}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {directionBadge(file.direction)}
+                    <span className="text-xs text-muted-foreground">
+                      Priority Δ {file.priorityScoreDelta ?? "—"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>New findings</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {findings.newFindings.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No new findings.</div>
+          ) : (
+            findings.newFindings.slice(0, 5).map((finding) => (
+              <div key={finding.fingerprint} className="rounded-lg border p-3">
+                <div className="text-sm font-medium">{finding.title ?? "Untitled finding"}</div>
+                <div className="text-xs text-muted-foreground">
+                  {finding.severity ?? "unknown"} • {finding.filePath ?? "unknown path"}
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Resolved findings</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {findings.resolvedFindings.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No resolved findings.</div>
+          ) : (
+            findings.resolvedFindings.slice(0, 5).map((finding) => (
+              <div key={finding.fingerprint} className="rounded-lg border p-3">
+                <div className="text-sm font-medium">{finding.title ?? "Untitled finding"}</div>
+                <div className="text-xs text-muted-foreground">
+                  {finding.severity ?? "unknown"} • {finding.filePath ?? "unknown path"}
+                </div>
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
     </div>

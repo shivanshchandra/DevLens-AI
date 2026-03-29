@@ -331,6 +331,94 @@ export type ScanChatResponse = {
   confidence: string
 }
 
+export type CompareVerdict = "improved" | "regressed" | "unchanged"
+
+export type CompareSeverityCounts = {
+  critical: number
+  high: number
+  medium: number
+  low: number
+}
+
+export type CompareFindingItem = {
+  fingerprint: string
+  id?: string | null
+  title?: string | null
+  ruleId?: string | null
+  severity?: string | null
+  filePath?: string | null
+  message?: string | null
+  type?: string | null
+}
+
+export type CompareOverview = {
+  baseHealthScore: number | null
+  targetHealthScore: number | null
+  healthScoreDelta: number
+  baseGrade: string | null
+  targetGrade: string | null
+  gradeChanged: boolean
+}
+
+export type CompareFindingsSection = {
+  baseCounts: CompareSeverityCounts
+  targetCounts: CompareSeverityCounts
+  deltas: CompareSeverityCounts
+  newFindings: CompareFindingItem[]
+  resolvedFindings: CompareFindingItem[]
+}
+
+export type CompareRefactorFileChange = {
+  filePath: string
+  baseRank?: number | null
+  targetRank?: number | null
+  direction: "improved" | "regressed" | "new" | "resolved" | "unchanged"
+  basePriorityScore?: number | null
+  targetPriorityScore?: number | null
+  priorityScoreDelta?: number | null
+}
+
+export type CompareRefactorSection = {
+  topChangedFiles: CompareRefactorFileChange[]
+}
+
+export type CompareArchitectureSection = {
+  baseRiskScore: number
+  targetRiskScore: number
+  riskDelta: number
+  possibleGodFilesDelta: number
+  hotspotDirectoriesDelta: number
+  architectureSmellsDelta: number
+  couplingHotspotsDelta: number
+  dependencyHubsDelta: number
+  boundaryWarningsDelta: number
+}
+
+export type CompareMlSection = {
+  basePredictedRiskScore: number | null
+  targetPredictedRiskScore: number | null
+  riskScoreDelta: number
+  basePredictedDebtScore: number | null
+  targetPredictedDebtScore: number | null
+  debtScoreDelta: number
+  basePredictedRiskLevel?: string | null
+  targetPredictedRiskLevel?: string | null
+  basePredictedDebtLevel?: string | null
+  targetPredictedDebtLevel?: string | null
+}
+
+export type ScanCompareResponse = {
+  baseScanId: string
+  targetScanId: string
+  verdict: CompareVerdict
+  summary: string
+  overview: CompareOverview
+  findings: CompareFindingsSection
+  refactor: CompareRefactorSection
+  architecture: CompareArchitectureSection
+  ml: CompareMlSection
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers ?? {})
 
@@ -387,6 +475,15 @@ export function chatWithScan(scanId: string, body: ScanChatRequest) {
     method: "POST",
     body: JSON.stringify(body),
   })
+}
+
+export function compareScans(baseScanId: string, targetScanId: string) {
+  return request<ScanCompareResponse>(
+    `/api/scans/compare?base_scan_id=${encodeURIComponent(
+      baseScanId
+    )}&target_scan_id=${encodeURIComponent(targetScanId)}`,
+    { method: "GET" }
+  )
 }
 
 export function listScans(limit = 20, offset = 0) {
