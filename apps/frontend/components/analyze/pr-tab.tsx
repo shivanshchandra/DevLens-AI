@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { ArrowRight, GitPullRequest, Hash, Link2 } from "lucide-react"
 
 import { createScan } from "@/lib/api/client"
 
@@ -59,39 +60,72 @@ export function PrTab() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-2)">
+    <div className="rounded-[24px] border border-white/10 bg-white/[0.02] p-5 md:p-6">
+      <div className="mb-6 flex items-start gap-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-zinc-200">
+          <GitPullRequest className="h-5 w-5" />
+        </div>
+
+        <div>
+          <h2 className="text-lg font-semibold text-white">Review a pull request</h2>
+          <p className="mt-1 text-sm leading-6 text-zinc-400">
+            Focus on changed files and detect risky pull request patterns faster.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="repoUrl">Repository URL</Label>
-          <Input
-            id="repoUrl"
-            placeholder="https://github.com/org/repo"
-            value={repoUrl}
-            onChange={(e) => setRepoUrl(e.target.value)}
-          />
+          <div className="relative">
+            <Link2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+            <Input
+              id="repoUrl"
+              placeholder="https://github.com/org/repo"
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <p className="text-xs leading-5 text-zinc-500">
+            Paste the repository URL that contains the pull request.
+          </p>
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="pr">Pull Request #</Label>
-          <Input
-            id="pr"
-            placeholder="e.g. 128"
-            value={prNumber}
-            onChange={(e) => setPrNumber(e.target.value)}
-            inputMode="numeric"
-          />
+          <div className="relative">
+            <Hash className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+            <Input
+              id="pr"
+              placeholder="e.g. 128"
+              value={prNumber}
+              onChange={(e) => setPrNumber(e.target.value)}
+              inputMode="numeric"
+              className="pl-10"
+            />
+          </div>
+          <p className="text-xs leading-5 text-zinc-500">
+            Enter the PR number to scan only the changed scope.
+          </p>
         </div>
       </div>
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <div className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      ) : null}
 
-      <div className="flex items-center gap-3">
-        <Button onClick={onSubmit} disabled={!canSubmit}>
-          {loading ? "Starting…" : "Analyze Pull Request"}
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          Starts a real PR scan focused on changed files for faster review.
+      <div className="mt-5 flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm leading-6 text-zinc-400">
+          Starts a focused PR scan for faster code review and risk visibility.
         </p>
+
+        <Button onClick={onSubmit} disabled={!canSubmit} size="xl">
+          {loading ? "Starting scan..." : "Analyze Pull Request"}
+          {!loading ? <ArrowRight className="h-4 w-4" /> : null}
+        </Button>
       </div>
     </div>
   )
