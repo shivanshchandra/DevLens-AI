@@ -32,7 +32,7 @@ def create_scan_endpoint(payload: ScanCreate, db: Session = Depends(get_db)):
     from app.worker.jobs import run_scan_job
 
     q = get_queue()
-    q.enqueue(run_scan_job, str(scan.id))
+    q.enqueue(run_scan_job, str(scan.id), job_timeout=900)
 
     return scan
 
@@ -77,7 +77,7 @@ def upload_zip_scan_endpoint(
     from app.worker.jobs import run_scan_job
 
     q = get_queue()
-    q.enqueue(run_scan_job, str(scan.id))
+    q.enqueue(run_scan_job, str(scan.id), job_timeout=900)
 
     return scan
 
