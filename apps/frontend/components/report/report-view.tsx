@@ -8,9 +8,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
 
 import { ScanChat } from "@/components/chat/scan-chat"
+import { AiSummaryCard } from "@/components/dashboard/ai-summary-card"
+import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { FindingsTable } from "@/components/dashboard/findings-table"
 import { LanguageChart } from "@/components/dashboard/language-chart"
+import { MetricsGrid } from "@/components/dashboard/metrics-grid"
+import { RecommendedActionsCard } from "@/components/dashboard/recommended-actions-card"
+import { ScanSummaryBar } from "@/components/dashboard/scan-summary-bar"
+import { SectionHeader } from "@/components/dashboard/section-header"
 import { SeverityChart } from "@/components/dashboard/severity-chart"
+import { StatusPill } from "@/components/dashboard/status-pill"
+import { TopRisksCard } from "@/components/dashboard/top-risks-card"
 import type {
   Finding,
   FindingSeverity,
@@ -566,6 +574,45 @@ function sourceLabel(
   }
 }
 
+function uniqueNonEmpty(items: Array<string | undefined | null>) {
+  return Array.from(
+    new Set(
+      items
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean)
+    )
+  )
+}
+
+function toDisplayNumber(value?: number | null) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "—"
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
+function riskAccentFromLevel(
+  level?: string | null
+): "neutral" | "success" | "warning" | "danger" | "info" {
+  const normalized = String(level ?? "").toLowerCase()
+
+  if (["low", "healthy", "good", "stable", "a", "b"].includes(normalized)) {
+    return "success"
+  }
+
+  if (["medium", "moderate", "warning", "c"].includes(normalized)) {
+    return "warning"
+  }
+
+  if (["high", "critical", "failed", "d", "e", "f"].includes(normalized)) {
+    return "danger"
+  }
+
+  if (["info", "running", "queued"].includes(normalized)) {
+    return "info"
+  }
+
+  return "neutral"
+}
+
 export function ReportView({
   scanId,
   results,
@@ -625,6 +672,115 @@ export function ReportView({
     !!ai.refactorPlan ||
     !!ai.grounding
 
+  const totalFindings = safeFindings.length
+  const criticalAndHighCount = counts.critical + counts.high
+
+  const summaryBarItems = [
+    {
+      label: "Health",
+      value: toDisplayNumber(results.healthScore),
+      tone: riskAccentFromLevel(results.grade),
+    },
+    {
+      label: "Grade",
+      value: results.grade ?? "—",
+      tone: riskAccentFromLevel(results.grade),
+    },
+    {
+      label: "Findings",
+      value: totalFindings,
+      tone: totalFindings > 0 ? "warning" : "success",
+    },
+    {
+      label: "Critical + High",
+      value: criticalAndHighCount,
+      tone: criticalAndHighCount > 0 ? "danger" : "success",
+    },
+    {
+      label: "Architecture Risk",
+      value: titleCase(architectureSummary.architectureRiskLevel),
+      tone: riskAccentFromLevel(architectureSummary.architectureRiskLevel),
+    },
+    {
+      label: "Predicted Risk",
+      value: titleCase(riskPrediction?.level ?? ai.grounding?.predictedRiskLevel),
+      tone: riskAccentFromLevel(riskPrediction?.level ?? ai.grounding?.predictedRiskLevel),
+    },
+  ] as const
+
+  const metricItems = [
+    {
+      label: "Health Score",
+      value: toDisplayNumber(results.healthScore),
+      hint: "Overall codebase health score",
+      accent: riskAccentFromLevel(results.grade),
+      badge: results.grade ?? "—",
+      badgeTone: riskAccentFromLevel(results.grade),
+    },
+    {
+      label: "Quality",
+      value: toDisplayNumber(results.subScores?.quality),
+      hint: "Quality sub-score",
+      accent: "info" as const,
+    },
+    {
+      label: "Security",
+      value: toDisplayNumber(results.subScores?.security),
+      hint: "Security sub-score",
+      accent: counts.critical > 0 || counts.high > 0 ? ("danger" as const) : ("success" as const),
+    },
+    {
+      label: "Maintainability",
+      value: toDisplayNumber(results.subScores?.maintainability),
+      hint: "Maintainability sub-score",
+      accent: "neutral" as const,
+    },
+    {
+      label: "Predicted Debt",
+      value: titleCase(technicalDebtPrediction?.level ?? ai.grounding?.predictedDebtLevel),
+      hint: `Score: ${toDisplayNumber(technicalDebtPrediction?.score)}`,
+      accent: riskAccentFromLevel(
+        technicalDebtPrediction?.level ?? ai.grounding?.predictedDebtLevel
+      ),
+    },
+    {
+      label: "Critical + High Findings",
+      value: criticalAndHighCount,
+      hint: `${counts.critical} critical • ${counts.high} high`,
+      accent: criticalAndHighCount > 0 ? ("danger" as const) : ("success" as const),
+    },
+  ]
+
+  const topRiskItems = uniqueNonEmpty([
+    ...(ai.riskExplanation?.bullets ?? []),
+    criticalAndHighCount > 0
+      ? `${criticalAndHighCount} high-priority findings need attention first.`
+      : "No critical or high-severity findings were detected.",
+    architectureSummary.architectureRiskLevel
+      ? `Architecture pressure is ${titleCase(architectureSummary.architectureRiskLevel)}.`
+      : undefined,
+    riskPrediction?.level
+      ? `ML risk prediction is ${titleCase(riskPrediction.level)}.`
+      : undefined,
+    technicalDebtPrediction?.level
+      ? `Technical debt prediction is ${titleCase(technicalDebtPrediction.level)}.`
+      : undefined,
+  ])
+
+  const recommendedActionItems = uniqueNonEmpty([
+    ...(ai.refactorPlan?.steps ?? []),
+    ...fixSuggestionsState.items
+      .slice(0, 3)
+      .map((item) => item.recommendedAction ?? item.title),
+    ...nextActions.slice(0, 3),
+  ])
+
+  const aiHighlights = uniqueNonEmpty([
+    ai.riskExplanation?.narrative,
+    riskExplanation?.narrative,
+    technicalDebtExplanation?.narrative,
+  ]).slice(0, 3)
+
   async function copyShare() {
     const url = `${window.location.origin}/report/public/${scanId}`
     await navigator.clipboard.writeText(url)
@@ -633,68 +789,44 @@ export function ReportView({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {isPublic ? "Public Report" : "Report"}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Health score summarizes quality, security, maintainability, and AI-derived risk signals.
-          </p>
-        </div>
+      <DashboardHeader
+        title={isPublic ? "Public Scan Report" : "Scan Report"}
+        description="Review code health, findings, architecture pressure, ML signals, and grounded AI recommendations in one place."
+        scanId={scanId}
+        isPublic={isPublic}
+        onShare={!isPublic ? copyShare : undefined}
+      />
 
-        <div className="flex items-center gap-2">
-          <Badge variant="outline">Scan {scanId.slice(0, 8)}</Badge>
-          {!isPublic && (
-            <Button variant="outline" onClick={copyShare}>
-              Share
-            </Button>
-          )}
-        </div>
+      <ScanSummaryBar items={[...summaryBarItems]} />
+
+      <div className="space-y-4">
+        <SectionHeader
+          title="Executive Overview"
+          description="A premium top-level summary of the most important signals from this scan."
+        />
+        <MetricsGrid items={metricItems} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="md:col-span-1">
-          <CardHeader>
-            <CardTitle>Health</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-semibold">{results.healthScore}</div>
-            <div className="text-sm text-muted-foreground">Grade: {results.grade}</div>
-          </CardContent>
-        </Card>
+      <div className="space-y-4">
+        <SectionHeader
+          title="AI Executive Layer"
+          description="Grounded narrative insights and practical next steps generated from the scan data."
+        />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Quality</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-semibold">{results.subScores.quality}</div>
-            <div className="text-sm text-muted-foreground">Sub-score</div>
-          </CardContent>
-        </Card>
+        <AiSummaryCard summary={ai.summary} highlights={aiHighlights} />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Security</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-semibold">{results.subScores.security}</div>
-            <div className="text-sm text-muted-foreground">Sub-score</div>
-          </CardContent>
-        </Card>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <TopRisksCard
+            title={ai.riskExplanation?.title ?? "Top Risks"}
+            items={topRiskItems}
+            level={ai.riskExplanation?.level ?? riskPrediction?.level}
+          />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Maintainability</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-semibold">
-              {results.subScores.maintainability}
-            </div>
-            <div className="text-sm text-muted-foreground">Sub-score</div>
-          </CardContent>
-        </Card>
+          <RecommendedActionsCard
+            title={ai.refactorPlan?.title ?? "Recommended Actions"}
+            items={recommendedActionItems}
+          />
+        </div>
       </div>
 
       {hasAiInsights && (
@@ -702,130 +834,116 @@ export function ReportView({
           <Separator />
 
           <div className="space-y-4">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight">Grounded AI Insights</h2>
-              <p className="text-sm text-muted-foreground">
-                Backend-generated narrative insights grounded in findings, architecture signals,
-                refactor targets, and ML outputs.
-              </p>
-            </div>
+            <SectionHeader
+              title="Grounded AI Details"
+              description="Detailed grounded insight blocks generated by the backend."
+            />
 
             <div className="grid gap-4 md:grid-cols-4">
-              <Card>
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
                 <CardHeader>
                   <CardTitle>AI Risk Level</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-1">
-                  <div className="text-3xl font-semibold">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-semibold text-white">
                     {titleCase(ai.riskExplanation?.level)}
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    Combined signal assessment
-                  </div>
+                  <StatusPill
+                    label={titleCase(ai.riskExplanation?.level)}
+                    tone={riskAccentFromLevel(ai.riskExplanation?.level)}
+                  />
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
                 <CardHeader>
                   <CardTitle>Architecture Risk</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-1">
-                  <div className="text-3xl font-semibold">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-semibold text-white">
                     {titleCase(ai.grounding?.architectureRiskLevel)}
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    Structural pressure
-                  </div>
+                  <StatusPill
+                    label={titleCase(ai.grounding?.architectureRiskLevel)}
+                    tone={riskAccentFromLevel(ai.grounding?.architectureRiskLevel)}
+                  />
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
                 <CardHeader>
                   <CardTitle>Predicted Risk</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-1">
-                  <div className="text-3xl font-semibold">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-semibold text-white">
                     {titleCase(ai.grounding?.predictedRiskLevel)}
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    ML risk signal
-                  </div>
+                  <StatusPill
+                    label={titleCase(ai.grounding?.predictedRiskLevel)}
+                    tone={riskAccentFromLevel(ai.grounding?.predictedRiskLevel)}
+                  />
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
                 <CardHeader>
                   <CardTitle>Predicted Debt</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-1">
-                  <div className="text-3xl font-semibold">
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-semibold text-white">
                     {titleCase(ai.grounding?.predictedDebtLevel)}
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    ML debt signal
-                  </div>
+                  <StatusPill
+                    label={titleCase(ai.grounding?.predictedDebtLevel)}
+                    tone={riskAccentFromLevel(ai.grounding?.predictedDebtLevel)}
+                  />
                 </CardContent>
               </Card>
             </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Executive Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                {ai.summary ?? "No grounded AI summary available for this scan."}
-              </CardContent>
-            </Card>
-
             <div className="grid gap-4 md:grid-cols-2">
-              <Card>
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
                 <CardHeader>
                   <CardTitle>{ai.riskExplanation?.title ?? "Risk Explanation"}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    {ai.riskExplanation?.narrative ??
-                      "No grounded risk explanation available."}
+                  <p className="text-sm leading-6 text-zinc-300">
+                    {ai.riskExplanation?.narrative ?? "No grounded risk explanation available."}
                   </p>
 
                   {!!ai.riskExplanation?.bullets?.length && (
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Signals</div>
-                      <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                        {ai.riskExplanation.bullets.map((bullet, index) => (
-                          <li key={`${bullet}-${index}`}>{bullet}</li>
-                        ))}
-                      </ul>
-                    </div>
+                    <ul className="list-disc space-y-2 pl-5 text-sm text-zinc-400">
+                      {ai.riskExplanation.bullets.map((bullet, index) => (
+                        <li key={`${bullet}-${index}`}>{bullet}</li>
+                      ))}
+                    </ul>
                   )}
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
                 <CardHeader>
                   <CardTitle>{ai.refactorPlan?.title ?? "Refactor Plan"}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {!!ai.refactorPlan?.steps?.length ? (
-                    <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+                    <ol className="list-decimal space-y-2 pl-5 text-sm text-zinc-400">
                       {ai.refactorPlan.steps.map((step, index) => (
                         <li key={`${step}-${index}`}>{step}</li>
                       ))}
                     </ol>
                   ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No grounded refactor plan available.
-                    </p>
+                    <p className="text-sm text-zinc-400">No grounded refactor plan available.</p>
                   )}
                 </CardContent>
               </Card>
             </div>
 
-            <Card>
+            <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
               <CardHeader>
                 <CardTitle>Grounding Data</CardTitle>
               </CardHeader>
-              <CardContent className="grid gap-3 text-sm text-muted-foreground md:grid-cols-3">
+              <CardContent className="grid gap-3 text-sm text-zinc-400 md:grid-cols-3">
                 <div>Health score: {ai.grounding?.healthScore ?? "—"}</div>
                 <div>Grade: {ai.grounding?.grade ?? "—"}</div>
                 <div>Total findings: {ai.grounding?.totalFindings ?? "—"}</div>
