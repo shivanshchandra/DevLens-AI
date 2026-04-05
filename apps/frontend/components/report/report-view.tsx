@@ -10,14 +10,19 @@ import { toast } from "@/hooks/use-toast"
 import { ScanChat } from "@/components/chat/scan-chat"
 import { AiSummaryCard } from "@/components/dashboard/ai-summary-card"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
+import { EmptyStateCard } from "@/components/dashboard/empty-state-card"
 import { FindingsTable } from "@/components/dashboard/findings-table"
+import { InfoPairGrid } from "@/components/dashboard/info-pair-grid"
+import { InsightListCard } from "@/components/dashboard/insight-list-card"
 import { LanguageChart } from "@/components/dashboard/language-chart"
 import { MetricsGrid } from "@/components/dashboard/metrics-grid"
 import { RecommendedActionsCard } from "@/components/dashboard/recommended-actions-card"
 import { ScanSummaryBar } from "@/components/dashboard/scan-summary-bar"
 import { SectionHeader } from "@/components/dashboard/section-header"
 import { SeverityChart } from "@/components/dashboard/severity-chart"
+import { StatHighlightCard } from "@/components/dashboard/stat-highlight-card"
 import { StatusPill } from "@/components/dashboard/status-pill"
+import { TabSectionShell } from "@/components/dashboard/tab-section-shell"
 import { TopRisksCard } from "@/components/dashboard/top-risks-card"
 import type {
   Finding,
@@ -613,6 +618,18 @@ function riskAccentFromLevel(
   return "neutral"
 }
 
+function buildInsightItems(
+  items: Array<{
+    id: string
+    title: string
+    description?: string
+    meta?: string[]
+    badge?: string
+  }>
+) {
+  return items
+}
+
 export function ReportView({
   scanId,
   results,
@@ -781,6 +798,204 @@ export function ReportView({
     technicalDebtExplanation?.narrative,
   ]).slice(0, 3)
 
+  const architectureSummaryItems = [
+    {
+      label: "Architecture Risk",
+      value: titleCase(architectureSummary.architectureRiskLevel),
+      subtext: `Score ${formatScore(architectureSummary.architectureRiskScore)}`,
+    },
+    {
+      label: "God Files",
+      value: architectureSummary.possibleGodFiles ?? 0,
+      subtext: "Possible overloaded files",
+    },
+    {
+      label: "Coupling Hotspots",
+      value: architectureSummary.couplingHotspots ?? 0,
+      subtext: "Highly connected files",
+    },
+    {
+      label: "Boundary Warnings",
+      value: architectureSummary.boundaryWarnings ?? 0,
+      subtext: "Cross-directory pressure",
+    },
+  ]
+
+  const architectureSmellItems = buildInsightItems(
+    architectureSmells.map((smell, index) => ({
+      id: smell.id ?? `arch-smell-${index}`,
+      title: smell.title ?? `Architecture smell #${index + 1}`,
+      description: smell.message ?? "No description available.",
+      badge: titleCase(smell.severity),
+      meta: smell.recommendation ? [`Recommendation: ${smell.recommendation}`] : [],
+    }))
+  )
+
+  const architectureRecommendationItems = buildInsightItems(
+    architectureRecommendations.map((item, index) => ({
+      id: `arch-reco-${index}`,
+      title: item,
+    }))
+  )
+
+  const directoryHotspotItems = buildInsightItems(
+    directoryHotspots.map((item, index) => ({
+      id: `${item.directoryPath}-${index}`,
+      title: item.directoryPath || ".",
+      description: `Score ${typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}`,
+      meta: [
+        `Files: ${item.fileCount ?? 0}`,
+        `LOC: ${item.loc ?? 0}`,
+        `LOC share: ${item.locShare ?? 0}%`,
+        `Issues: ${item.issueCount ?? 0}`,
+        `Hotspots: ${item.hotspotCount ?? 0}`,
+      ],
+    }))
+  )
+
+  const possibleGodFileItems = buildInsightItems(
+    possibleGodFiles.map((item, index) => ({
+      id: `${item.filePath}-${index}`,
+      title: item.filePath,
+      badge: typeof item.score === "number" ? item.score.toFixed(0) : "N/A",
+      meta: [
+        `LOC: ${item.loc ?? 0}`,
+        `Findings: ${item.findingCount ?? 0}`,
+        `Hotspot: ${item.hotspotScore ?? 0}`,
+        ...(item.reasons ?? []),
+      ],
+    }))
+  )
+
+  const fileHotspotItems = buildInsightItems(
+    fileHotspots.map((item, index) => ({
+      id: `${item.filePath}-${index}`,
+      title: item.filePath,
+      badge: typeof item.score === "number" ? item.score.toFixed(0) : "N/A",
+      meta: [
+        `LOC: ${item.loc ?? 0}`,
+        `Findings: ${item.findingCount ?? 0}`,
+        `Hotspot: ${item.hotspotScore ?? 0}`,
+        ...(item.reasons ?? []),
+      ],
+    }))
+  )
+
+  const couplingHotspotItems = buildInsightItems(
+    couplingHotspots.map((item, index) => ({
+      id: `${item.filePath}-${index}`,
+      title: item.filePath,
+      badge: typeof item.score === "number" ? item.score.toFixed(0) : "N/A",
+      meta: [
+        `Internal imports: ${item.internalImportCount ?? 0}`,
+        `Inbound deps: ${item.internalInboundCount ?? 0}`,
+        ...(item.reasons ?? []),
+      ],
+    }))
+  )
+
+  const dependencyHubItems = buildInsightItems(
+    dependencyHubs.map((item, index) => ({
+      id: `${item.filePath}-${index}`,
+      title: item.filePath,
+      badge: typeof item.score === "number" ? item.score.toFixed(0) : "N/A",
+      meta: [
+        `Inbound dependencies: ${item.inboundDependencyCount ?? 0}`,
+        ...(item.reasons ?? []),
+      ],
+    }))
+  )
+
+  const boundaryWarningItems = buildInsightItems(
+    boundaryWarnings.map((item, index) => ({
+      id: `${item.sourceDirectory}-${item.targetDirectory}-${index}`,
+      title: `${item.sourceDirectory} → ${item.targetDirectory}`,
+      description: item.message ?? "No boundary warning description available.",
+      badge: titleCase(item.severity),
+      meta: [`Cross imports: ${item.crossImportCount ?? 0}`],
+    }))
+  )
+
+  const directoryCouplingItems = buildInsightItems(
+    directoryCouplingHotspots.map((item, index) => ({
+      id: `${item.directoryPath}-${index}`,
+      title: item.directoryPath,
+      badge: typeof item.score === "number" ? item.score.toFixed(0) : "N/A",
+      meta: [
+        `Cross imports: ${item.crossImportCount ?? 0}`,
+        `Target dirs: ${item.uniqueTargetDirectories ?? 0}`,
+      ],
+    }))
+  )
+
+  const mlTopContributingItems = buildInsightItems(
+    topContributingFiles.map((file, index) => ({
+      id: `${file.filePath}-${index}`,
+      title: file.filePath,
+      badge:
+        typeof (file.priorityScore ?? file.contributionScore) === "number"
+          ? Number(file.priorityScore ?? file.contributionScore).toFixed(0)
+          : "N/A",
+      meta: [
+        `Effort: ${file.estimatedEffort ?? "N/A"}`,
+        `Action: ${file.recommendedAction ?? "No action suggested."}`,
+        ...(file.reasons ?? []),
+      ],
+    }))
+  )
+
+  const nextActionItems = buildInsightItems(
+    nextActions.map((action, index) => ({
+      id: `next-action-${index}`,
+      title: action,
+    }))
+  )
+
+  const fixSuggestionItems = buildInsightItems(
+    fixSuggestionsState.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      description: item.why,
+      badge: item.priority ? titleCase(item.priority) : undefined,
+      meta: [
+        ...(item.filePath ? [item.filePath] : []),
+        ...(item.recommendedAction ? [`Action: ${item.recommendedAction}`] : []),
+        ...(item.saferAlternative ? [`Safer alternative: ${item.saferAlternative}`] : []),
+      ],
+    }))
+  )
+
+  const refactorTargetItems = buildInsightItems(
+    refactorTargetsState.items.slice(0, 5).map((item, index) => ({
+      id: item.id,
+      title: `#${index + 1} ${item.filePath}`,
+      badge: typeof item.score === "number" ? item.score.toFixed(0) : "N/A",
+      meta: [
+        ...(item.estimatedEffort ? [`Effort: ${item.estimatedEffort}`] : []),
+        ...(item.recommendedAction ? [`Action: ${item.recommendedAction}`] : []),
+        ...item.reasons,
+      ],
+    }))
+  )
+
+  const groundingPairs = [
+    { label: "Health score", value: ai.grounding?.healthScore ?? "—" },
+    { label: "Grade", value: ai.grounding?.grade ?? "—" },
+    { label: "Total findings", value: ai.grounding?.totalFindings ?? "—" },
+    { label: "Critical findings", value: ai.grounding?.criticalCount ?? "—" },
+    { label: "High findings", value: ai.grounding?.highCount ?? "—" },
+    { label: "Coupling hotspots", value: ai.grounding?.couplingHotspots ?? "—" },
+    { label: "Dependency hubs", value: ai.grounding?.dependencyHubs ?? "—" },
+    {
+      label: "Architecture risk",
+      value: titleCase(ai.grounding?.architectureRiskLevel),
+    },
+    {
+      label: "Predicted risk",
+      value: titleCase(ai.grounding?.predictedRiskLevel),
+    },
+  ]
+
   async function copyShare() {
     const url = `${window.location.origin}/report/public/${scanId}`
     await navigator.clipboard.writeText(url)
@@ -943,16 +1158,8 @@ export function ReportView({
               <CardHeader>
                 <CardTitle>Grounding Data</CardTitle>
               </CardHeader>
-              <CardContent className="grid gap-3 text-sm text-zinc-400 md:grid-cols-3">
-                <div>Health score: {ai.grounding?.healthScore ?? "—"}</div>
-                <div>Grade: {ai.grounding?.grade ?? "—"}</div>
-                <div>Total findings: {ai.grounding?.totalFindings ?? "—"}</div>
-                <div>Critical findings: {ai.grounding?.criticalCount ?? "—"}</div>
-                <div>High findings: {ai.grounding?.highCount ?? "—"}</div>
-                <div>Coupling hotspots: {ai.grounding?.couplingHotspots ?? "—"}</div>
-                <div>Dependency hubs: {ai.grounding?.dependencyHubs ?? "—"}</div>
-                <div>Architecture risk: {titleCase(ai.grounding?.architectureRiskLevel)}</div>
-                <div>Predicted risk: {titleCase(ai.grounding?.predictedRiskLevel)}</div>
+              <CardContent>
+                <InfoPairGrid items={groundingPairs} />
               </CardContent>
             </Card>
           </div>
@@ -964,126 +1171,36 @@ export function ReportView({
           <Separator />
 
           <div className="space-y-4">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight">Architecture Insights</h2>
-              <p className="text-sm text-muted-foreground">
-                Structural signals based on file size, hotspot concentration, clustered findings,
-                and module coupling pressure.
-              </p>
+            <SectionHeader
+              title="Architecture Insights"
+              description="Structural signals based on file size, hotspot concentration, clustered findings, and module coupling pressure."
+            />
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {architectureSummaryItems.map((item) => (
+                <StatHighlightCard
+                  key={item.label}
+                  label={item.label}
+                  value={item.value}
+                  subtext={item.subtext}
+                />
+              ))}
             </div>
 
-            <div className="grid gap-4 md:grid-cols-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Architecture Risk</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-1">
-                  <div className="text-3xl font-semibold">
-                    {titleCase(architectureSummary.architectureRiskLevel)}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Score: {formatScore(architectureSummary.architectureRiskScore)}
-                  </div>
-                </CardContent>
-              </Card>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <InsightListCard
+                title="Architecture Smells"
+                description="Design and structure issues detected in the current scan."
+                items={architectureSmellItems}
+                emptyText="No architecture smells detected for this scan."
+              />
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>God Files</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-semibold">
-                    {architectureSummary.possibleGodFiles ?? 0}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Possible overloaded files
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Coupling Hotspots</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-semibold">
-                    {architectureSummary.couplingHotspots ?? 0}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Highly connected files
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Boundary Warnings</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-semibold">
-                    {architectureSummary.boundaryWarnings ?? 0}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Cross-directory pressure
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Architecture smells</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {architectureSmells.length ? (
-                    architectureSmells.map((smell, index) => (
-                      <div
-                        key={smell.id ?? `arch-smell-${index}`}
-                        className="space-y-2 rounded-md border px-3 py-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="text-sm font-medium">
-                            {smell.title ?? `Architecture smell #${index + 1}`}
-                          </div>
-                          <Badge variant="outline">{titleCase(smell.severity)}</Badge>
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {smell.message ?? "No description available."}
-                        </div>
-                        {smell.recommendation && (
-                          <div className="text-sm text-muted-foreground">
-                            Recommendation: {smell.recommendation}
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No architecture smells detected for this scan.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Architecture recommendations</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {architectureRecommendations.length ? (
-                    <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                      {architectureRecommendations.map((item, index) => (
-                        <li key={`${item}-${index}`}>{item}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No architecture recommendations available.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
+              <InsightListCard
+                title="Architecture Recommendations"
+                description="Suggested improvements to reduce structural pressure."
+                items={architectureRecommendationItems}
+                emptyText="No architecture recommendations available."
+              />
             </div>
           </div>
         </>
@@ -1094,187 +1211,71 @@ export function ReportView({
           <Separator />
 
           <div className="space-y-4">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight">ML Insights</h2>
-              <p className="text-sm text-muted-foreground">
-                ML-assisted predictions and explanations generated from scan signals.
-              </p>
-            </div>
+            <SectionHeader
+              title="ML Insights"
+              description="ML-assisted predictions and explanations generated from scan signals."
+            />
 
-            <div className="grid gap-4 md:grid-cols-4">
-              <Card>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <StatHighlightCard
+                label="Predicted Risk"
+                value={riskPrediction?.level ?? "—"}
+                subtext={`Score: ${formatScore(riskPrediction?.score)}`}
+              />
+              <StatHighlightCard
+                label="Predicted Debt"
+                value={technicalDebtPrediction?.level ?? "—"}
+                subtext={`Score: ${formatScore(technicalDebtPrediction?.score)}`}
+              />
+              <Card className="rounded-[22px] border-white/10 bg-white/[0.03] sm:col-span-2">
                 <CardHeader>
-                  <CardTitle>Predicted Risk</CardTitle>
+                  <CardTitle className="text-white">ML Summary</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-1">
-                  <div className="text-3xl font-semibold">
-                    {riskPrediction?.level ?? "—"}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Score: {formatScore(riskPrediction?.score)}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Predicted Debt</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-1">
-                  <div className="text-3xl font-semibold">
-                    {technicalDebtPrediction?.level ?? "—"}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Score: {formatScore(technicalDebtPrediction?.score)}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="md:col-span-2">
-                <CardHeader>
-                  <CardTitle>ML Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
+                <CardContent className="text-sm leading-6 text-zinc-400">
                   {summaryText ?? "No ML summary available for this scan."}
                 </CardContent>
               </Card>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{riskExplanation?.title ?? "Risk Explanation"}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    {riskExplanation?.narrative ?? "No risk explanation available."}
-                  </p>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <InsightListCard
+                title={riskExplanation?.title ?? "Risk Explanation"}
+                description={riskExplanation?.narrative ?? "No risk explanation available."}
+                items={buildInsightItems([
+                  ...(riskExplanation?.reasons ?? []).map((reason, index) => ({
+                    id: `risk-reason-${index}`,
+                    title: reason,
+                    badge: "Reason",
+                  })),
+                  ...(riskExplanation?.drivers ?? []).map((driver, index) => ({
+                    id: `risk-driver-${index}`,
+                    title: driver,
+                    badge: "Driver",
+                  })),
+                ])}
+                emptyText="No detailed ML risk factors available."
+              />
 
-                  {!!riskExplanation?.reasons?.length && (
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Reasons</div>
-                      <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                        {riskExplanation.reasons.map((reason, index) => (
-                          <li key={`${reason}-${index}`}>{reason}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {!!riskExplanation?.drivers?.length && (
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Drivers</div>
-                      <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                        {riskExplanation.drivers.map((driver, index) => (
-                          <li key={`${driver}-${index}`}>{driver}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>
-                    {technicalDebtExplanation?.title ?? "Technical Debt Explanation"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    {technicalDebtExplanation?.narrative ??
-                      "No technical debt explanation available."}
-                  </p>
-
-                  {!!technicalDebtExplanation?.reasons?.length && (
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Reasons</div>
-                      <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                        {technicalDebtExplanation.reasons.map((reason, index) => (
-                          <li key={`${reason}-${index}`}>{reason}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {!!technicalDebtExplanation?.drivers?.length && (
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Drivers</div>
-                      <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                        {technicalDebtExplanation.drivers.map((driver, index) => (
-                          <li key={`${driver}-${index}`}>{driver}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Top Contributing Files</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {topContributingFiles.length ? (
-                    topContributingFiles.map((file, index) => (
-                      <div
-                        key={`${file.filePath}-${index}`}
-                        className="space-y-2 rounded-md border px-3 py-3"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="break-all font-mono text-xs">{file.filePath}</div>
-                          <Badge variant="outline">
-                            {typeof (file.priorityScore ?? file.contributionScore) === "number"
-                              ? Number(file.priorityScore ?? file.contributionScore).toFixed(0)
-                              : "N/A"}
-                          </Badge>
-                        </div>
-
-                        <div className="text-sm text-muted-foreground">
-                          Effort: {file.estimatedEffort ?? "N/A"}
-                        </div>
-
-                        <div className="text-sm text-muted-foreground">
-                          Action: {file.recommendedAction ?? "No action suggested."}
-                        </div>
-
-                        {!!file.reasons?.length && (
-                          <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                            {file.reasons.map((reason, reasonIndex) => (
-                              <li key={`${file.filePath}-reason-${reasonIndex}`}>{reason}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No contributing file insights available.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Next Actions</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {nextActions.length ? (
-                    <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                      {nextActions.map((action, index) => (
-                        <li key={`${action}-${index}`}>{action}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No next actions generated for this scan.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
+              <InsightListCard
+                title={technicalDebtExplanation?.title ?? "Technical Debt Explanation"}
+                description={
+                  technicalDebtExplanation?.narrative ??
+                  "No technical debt explanation available."
+                }
+                items={buildInsightItems([
+                  ...(technicalDebtExplanation?.reasons ?? []).map((reason, index) => ({
+                    id: `debt-reason-${index}`,
+                    title: reason,
+                    badge: "Reason",
+                  })),
+                  ...(technicalDebtExplanation?.drivers ?? []).map((driver, index) => ({
+                    id: `debt-driver-${index}`,
+                    title: driver,
+                    badge: "Driver",
+                  })),
+                ])}
+                emptyText="No detailed technical debt factors available."
+              />
             </div>
           </div>
         </>
@@ -1283,470 +1284,347 @@ export function ReportView({
       <Separator />
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-7">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="quality">Quality</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="complexity">Complexity</TabsTrigger>
-          <TabsTrigger value="architecture">Architecture</TabsTrigger>
-          <TabsTrigger value="fixes">Fixes</TabsTrigger>
-          <TabsTrigger value="chat">AI Chat</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 gap-2 rounded-[22px] border border-white/10 bg-white/[0.03] p-2 md:grid-cols-4 xl:grid-cols-7">
+          <TabsTrigger
+            value="overview"
+            className="rounded-[16px] data-[state=active]:bg-white data-[state=active]:text-black"
+          >
+            Overview
+          </TabsTrigger>
+          <TabsTrigger
+            value="quality"
+            className="rounded-[16px] data-[state=active]:bg-white data-[state=active]:text-black"
+          >
+            Quality
+          </TabsTrigger>
+          <TabsTrigger
+            value="security"
+            className="rounded-[16px] data-[state=active]:bg-white data-[state=active]:text-black"
+          >
+            Security
+          </TabsTrigger>
+          <TabsTrigger
+            value="complexity"
+            className="rounded-[16px] data-[state=active]:bg-white data-[state=active]:text-black"
+          >
+            Complexity
+          </TabsTrigger>
+          <TabsTrigger
+            value="architecture"
+            className="rounded-[16px] data-[state=active]:bg-white data-[state=active]:text-black"
+          >
+            Architecture
+          </TabsTrigger>
+          <TabsTrigger
+            value="fixes"
+            className="rounded-[16px] data-[state=active]:bg-white data-[state=active]:text-black"
+          >
+            Fixes
+          </TabsTrigger>
+          <TabsTrigger
+            value="chat"
+            className="rounded-[16px] data-[state=active]:bg-white data-[state=active]:text-black"
+          >
+            AI Chat
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="mt-6 space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
+        <TabsContent value="overview" className="mt-6">
+          <TabSectionShell
+            title="Overview"
+            description="Quick visual summaries and top findings from this scan."
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+                <CardHeader>
+                  <CardTitle className="text-white">Findings by Severity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <SeverityChart counts={counts as any} />
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+                <CardHeader>
+                  <CardTitle className="text-white">Languages</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <LanguageChart languages={languages} />
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
               <CardHeader>
-                <CardTitle>Findings by severity</CardTitle>
+                <CardTitle className="text-white">Top Findings</CardTitle>
               </CardHeader>
               <CardContent>
-                <SeverityChart counts={counts as any} />
+                <FindingsTable findings={topFindings} />
               </CardContent>
             </Card>
+          </TabSectionShell>
+        </TabsContent>
 
-            <Card>
+        <TabsContent value="quality" className="mt-6">
+          <TabSectionShell
+            title="Quality Findings"
+            description="Code quality issues detected during analysis."
+          >
+            <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+              <CardContent className="p-6">
+                <FindingsTable
+                  findings={normalizedFindings.filter((f) => f.type === "quality")}
+                />
+              </CardContent>
+            </Card>
+          </TabSectionShell>
+        </TabsContent>
+
+        <TabsContent value="security" className="mt-6">
+          <TabSectionShell
+            title="Security Findings"
+            description="Security issues and related alerts from the scan."
+          >
+            <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+              <CardContent className="p-6">
+                <FindingsTable
+                  findings={normalizedFindings.filter((f) => f.type === "security")}
+                />
+              </CardContent>
+            </Card>
+          </TabSectionShell>
+        </TabsContent>
+
+        <TabsContent value="complexity" className="mt-6">
+          <TabSectionShell
+            title="Complexity Analysis"
+            description="Cyclomatic complexity hotspots and findings."
+          >
+            {(results.metrics?.complexityHotspots ?? []).length ? (
+              <InsightListCard
+                title="Complexity Hotspots"
+                description="Files with elevated complexity scores."
+                items={buildInsightItems(
+                  (results.metrics?.complexityHotspots ?? []).map((h: any, i: number) => ({
+                    id: `${h.filePath}-${h.score}-${i}`,
+                    title: h.filePath,
+                    badge: String(h.score),
+                  }))
+                )}
+              />
+            ) : (
+              <EmptyStateCard
+                title="No complexity hotspots"
+                description="No elevated complexity hotspots were detected in this scan."
+              />
+            )}
+
+            <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
               <CardHeader>
-                <CardTitle>Languages</CardTitle>
+                <CardTitle className="text-white">Complexity Findings</CardTitle>
               </CardHeader>
               <CardContent>
-                <LanguageChart languages={languages} />
+                <FindingsTable
+                  findings={normalizedFindings.filter((f) => f.type === "complexity")}
+                />
               </CardContent>
             </Card>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Top findings</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <FindingsTable findings={topFindings} />
-            </CardContent>
-          </Card>
+          </TabSectionShell>
         </TabsContent>
 
-        <TabsContent value="quality" className="mt-6 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Quality findings</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <FindingsTable
-                findings={normalizedFindings.filter((f) => f.type === "quality")}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="security" className="mt-6 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Security findings</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <FindingsTable
-                findings={normalizedFindings.filter((f) => f.type === "security")}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="complexity" className="mt-6 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Complexity hotspots</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {(results.metrics?.complexityHotspots ?? []).map((h: any, i: number) => (
-                <div
-                  key={`${h.filePath}-${h.score}-${i}`}
-                  className="flex items-center justify-between rounded-md border px-3 py-2"
-                >
-                  <div className="font-mono text-xs">{h.filePath}</div>
-                  <div className="text-sm font-semibold">{h.score}</div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Complexity findings</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <FindingsTable
-                findings={normalizedFindings.filter((f) => f.type === "complexity")}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="architecture" className="mt-6 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Directory hotspots</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {directoryHotspots.length ? (
-                directoryHotspots.map((item, index) => (
-                  <div
-                    key={`${item.directoryPath}-${index}`}
-                    className="space-y-2 rounded-md border px-3 py-3"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="break-all font-mono text-xs">
-                        {item.directoryPath || "."}
-                      </div>
-                      <div className="text-sm font-semibold">
-                        {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                      <span>Files: {item.fileCount ?? 0}</span>
-                      <span>LOC: {item.loc ?? 0}</span>
-                      <span>LOC share: {item.locShare ?? 0}%</span>
-                      <span>Issues: {item.issueCount ?? 0}</span>
-                      <span>Hotspots: {item.hotspotCount ?? 0}</span>
-                    </div>
-                  </div>
-                ))
+        <TabsContent value="architecture" className="mt-6">
+          <TabSectionShell
+            title="Architecture Explorer"
+            description="Detailed architecture hotspots, coupling pressure, and boundaries."
+          >
+            <div className="grid gap-4 xl:grid-cols-2">
+              {directoryHotspotItems.length ? (
+                <InsightListCard
+                  title="Directory Hotspots"
+                  description="Directories with concentrated code weight and issues."
+                  items={directoryHotspotItems}
+                />
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  No directory hotspot data available.
-                </p>
+                <EmptyStateCard
+                  title="No directory hotspots"
+                  description="No directory hotspot data is available for this scan."
+                />
               )}
-            </CardContent>
-          </Card>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Possible god files</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {possibleGodFiles.length ? (
-                  possibleGodFiles.map((item, index) => (
-                    <div
-                      key={`${item.filePath}-${index}`}
-                      className="space-y-2 rounded-md border px-3 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="break-all font-mono text-xs">{item.filePath}</div>
-                        <Badge variant="outline">
-                          {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
-                        </Badge>
-                      </div>
+              {possibleGodFileItems.length ? (
+                <InsightListCard
+                  title="Possible God Files"
+                  description="Files that may be carrying too much responsibility."
+                  items={possibleGodFileItems}
+                />
+              ) : (
+                <EmptyStateCard
+                  title="No god files detected"
+                  description="No possible god files were flagged in this scan."
+                />
+              )}
+            </div>
 
-                      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                        <span>LOC: {item.loc ?? 0}</span>
-                        <span>Findings: {item.findingCount ?? 0}</span>
-                        <span>Hotspot: {item.hotspotScore ?? 0}</span>
-                      </div>
+            <div className="grid gap-4 xl:grid-cols-2">
+              {fileHotspotItems.length ? (
+                <InsightListCard
+                  title="File Hotspots"
+                  description="Files with elevated hotspot scores."
+                  items={fileHotspotItems}
+                />
+              ) : (
+                <EmptyStateCard
+                  title="No file hotspots"
+                  description="No file hotspot data is available for this scan."
+                />
+              )}
 
-                      {!!item.reasons?.length && (
-                        <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                          {item.reasons.map((reason, reasonIndex) => (
-                            <li key={`${item.filePath}-reason-${reasonIndex}`}>{reason}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No possible god files detected.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+              {couplingHotspotItems.length ? (
+                <InsightListCard
+                  title="Coupling Hotspots"
+                  description="Files with elevated internal dependency coupling."
+                  items={couplingHotspotItems}
+                />
+              ) : (
+                <EmptyStateCard
+                  title="No coupling hotspots"
+                  description="No coupling hotspot data is available for this scan."
+                />
+              )}
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>File hotspots</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {fileHotspots.length ? (
-                  fileHotspots.map((item, index) => (
-                    <div
-                      key={`${item.filePath}-${index}`}
-                      className="space-y-2 rounded-md border px-3 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="break-all font-mono text-xs">{item.filePath}</div>
-                        <Badge variant="outline">
-                          {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
-                        </Badge>
-                      </div>
+            <div className="grid gap-4 xl:grid-cols-2">
+              {dependencyHubItems.length ? (
+                <InsightListCard
+                  title="Dependency Hubs"
+                  description="Files that attract a large number of inbound dependencies."
+                  items={dependencyHubItems}
+                />
+              ) : (
+                <EmptyStateCard
+                  title="No dependency hubs"
+                  description="No dependency hub data is available for this scan."
+                />
+              )}
 
-                      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                        <span>LOC: {item.loc ?? 0}</span>
-                        <span>Findings: {item.findingCount ?? 0}</span>
-                        <span>Hotspot: {item.hotspotScore ?? 0}</span>
-                      </div>
+              {boundaryWarningItems.length ? (
+                <InsightListCard
+                  title="Boundary Warnings"
+                  description="Cross-directory boundaries that may need attention."
+                  items={boundaryWarningItems}
+                />
+              ) : (
+                <EmptyStateCard
+                  title="No boundary warnings"
+                  description="No boundary warnings were detected."
+                />
+              )}
+            </div>
 
-                      {!!item.reasons?.length && (
-                        <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                          {item.reasons.map((reason, reasonIndex) => (
-                            <li key={`${item.filePath}-reason-${reasonIndex}`}>{reason}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No file hotspot data available.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Coupling hotspots</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {couplingHotspots.length ? (
-                  couplingHotspots.map((item, index) => (
-                    <div
-                      key={`${item.filePath}-${index}`}
-                      className="space-y-2 rounded-md border px-3 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="break-all font-mono text-xs">{item.filePath}</div>
-                        <Badge variant="outline">
-                          {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
-                        </Badge>
-                      </div>
-
-                      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                        <span>Internal imports: {item.internalImportCount ?? 0}</span>
-                        <span>Inbound deps: {item.internalInboundCount ?? 0}</span>
-                      </div>
-
-                      {!!item.reasons?.length && (
-                        <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                          {item.reasons.map((reason, reasonIndex) => (
-                            <li key={`${item.filePath}-reason-${reasonIndex}`}>{reason}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No coupling hotspot data available.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Dependency hubs</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {dependencyHubs.length ? (
-                  dependencyHubs.map((item, index) => (
-                    <div
-                      key={`${item.filePath}-${index}`}
-                      className="space-y-2 rounded-md border px-3 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="break-all font-mono text-xs">{item.filePath}</div>
-                        <Badge variant="outline">
-                          {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
-                        </Badge>
-                      </div>
-
-                      <div className="text-sm text-muted-foreground">
-                        Inbound dependencies: {item.inboundDependencyCount ?? 0}
-                      </div>
-
-                      {!!item.reasons?.length && (
-                        <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                          {item.reasons.map((reason, reasonIndex) => (
-                            <li key={`${item.filePath}-reason-${reasonIndex}`}>{reason}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No dependency hub data available.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Boundary warnings</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {boundaryWarnings.length ? (
-                  boundaryWarnings.map((item, index) => (
-                    <div
-                      key={`${item.sourceDirectory}-${item.targetDirectory}-${index}`}
-                      className="space-y-2 rounded-md border px-3 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-medium">
-                          {item.sourceDirectory} → {item.targetDirectory}
-                        </div>
-                        <Badge variant="outline">{titleCase(item.severity)}</Badge>
-                      </div>
-
-                      <div className="text-sm text-muted-foreground">
-                        Cross imports: {item.crossImportCount ?? 0}
-                      </div>
-
-                      <div className="text-sm text-muted-foreground">
-                        {item.message ?? "No boundary warning description available."}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No boundary warnings detected.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Directory coupling hotspots</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {directoryCouplingHotspots.length ? (
-                  directoryCouplingHotspots.map((item, index) => (
-                    <div
-                      key={`${item.directoryPath}-${index}`}
-                      className="space-y-2 rounded-md border px-3 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="break-all font-mono text-xs">{item.directoryPath}</div>
-                        <Badge variant="outline">
-                          {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
-                        </Badge>
-                      </div>
-
-                      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                        <span>Cross imports: {item.crossImportCount ?? 0}</span>
-                        <span>Target dirs: {item.uniqueTargetDirectories ?? 0}</span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No directory coupling hotspots detected.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+            {directoryCouplingItems.length ? (
+              <InsightListCard
+                title="Directory Coupling Hotspots"
+                description="Directories with elevated cross-import pressure."
+                items={directoryCouplingItems}
+              />
+            ) : (
+              <EmptyStateCard
+                title="No directory coupling hotspots"
+                description="No directory coupling hotspots were detected."
+              />
+            )}
+          </TabSectionShell>
         </TabsContent>
 
-        <TabsContent value="fixes" className="mt-6 space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle>Suggested quick wins</CardTitle>
-              <Badge variant="outline">{sourceLabel(fixSuggestionsState.source)}</Badge>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {fixSuggestionsState.items.length ? (
-                fixSuggestionsState.items.map((item) => (
-                  <div key={item.id} className="space-y-2 rounded-md border px-3 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="text-sm font-medium">{item.title}</div>
-                        <div className="text-sm text-muted-foreground">{item.why}</div>
-                      </div>
-
-                      {item.priority && (
-                        <Badge variant="outline">{titleCase(item.priority)}</Badge>
-                      )}
-                    </div>
-
-                    {item.filePath && (
-                      <div className="break-all font-mono text-xs text-muted-foreground">
-                        {item.filePath}
-                      </div>
-                    )}
-
-                    {item.recommendedAction && (
-                      <div className="text-sm text-muted-foreground">
-                        Action: {item.recommendedAction}
-                      </div>
-                    )}
-
-                    {item.saferAlternative && (
-                      <div className="text-sm text-muted-foreground">
-                        Safer alternative: {item.saferAlternative}
-                      </div>
-                    )}
-                  </div>
-                ))
+        <TabsContent value="fixes" className="mt-6">
+          <TabSectionShell
+            title="Fixes and Refactor Priorities"
+            description="Recommended remediations and highest-priority refactor targets."
+          >
+            <div className="grid gap-4 xl:grid-cols-2">
+              {fixSuggestionItems.length ? (
+                <InsightListCard
+                  title="Suggested Quick Wins"
+                  description={`Source: ${sourceLabel(fixSuggestionsState.source)}`}
+                  items={fixSuggestionItems}
+                />
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  Backend fix suggestions are not available for this scan. Fallback also failed.
-                </p>
+                <EmptyStateCard
+                  title="No quick wins available"
+                  description="Backend fix suggestions were not available for this scan."
+                />
               )}
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle>Top refactor targets</CardTitle>
-              <Badge variant="outline">{sourceLabel(refactorTargetsState.source)}</Badge>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {refactorTargetsState.items.length ? (
-                refactorTargetsState.items.slice(0, 5).map((item, index) => (
-                  <div key={item.id} className="space-y-2 rounded-md border px-3 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <Badge variant="outline">#{index + 1}</Badge>
-                        <div className="break-all font-mono text-xs">{item.filePath}</div>
-                      </div>
-                      <div className="text-sm font-semibold">
-                        {typeof item.score === "number" ? item.score.toFixed(0) : "N/A"}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                      {item.estimatedEffort && <span>Effort: {item.estimatedEffort}</span>}
-                      {item.recommendedAction && <span>Action: {item.recommendedAction}</span>}
-                    </div>
-
-                    {!!item.reasons.length && (
-                      <ul className="list-disc pl-5 text-sm text-muted-foreground">
-                        {item.reasons.map((reason, reasonIndex) => (
-                          <li key={`${item.id}-reason-${reasonIndex}`}>{reason}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ))
+              {refactorTargetItems.length ? (
+                <InsightListCard
+                  title="Top Refactor Targets"
+                  description={`Source: ${sourceLabel(refactorTargetsState.source)}`}
+                  items={refactorTargetItems}
+                />
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  Backend refactor targets are not available for this scan. Fallback also failed.
-                </p>
+                <EmptyStateCard
+                  title="No refactor targets available"
+                  description="Backend refactor targets were not available for this scan."
+                />
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </TabSectionShell>
         </TabsContent>
 
-        <TabsContent value="chat" className="mt-6 space-y-4">
-          <ScanChat scanId={scanId} />
+        <TabsContent value="chat" className="mt-6">
+          <TabSectionShell
+            title="AI Chat"
+            description="Ask questions about this scan, findings, and generated recommendations."
+          >
+            <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+              <CardContent className="p-4 md:p-6">
+                <ScanChat scanId={scanId} />
+              </CardContent>
+            </Card>
+          </TabSectionShell>
         </TabsContent>
       </Tabs>
+
+      {hasMlInsights && (
+        <>
+          <Separator />
+
+          <div className="space-y-4">
+            <SectionHeader
+              title="ML Supporting Detail"
+              description="Supporting ML-driven files and next actions."
+            />
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              {mlTopContributingItems.length ? (
+                <InsightListCard
+                  title="Top Contributing Files"
+                  description="Files contributing most strongly to the ML assessment."
+                  items={mlTopContributingItems}
+                />
+              ) : (
+                <EmptyStateCard
+                  title="No contributing file insights"
+                  description="No ML contributing file details are available for this scan."
+                />
+              )}
+
+              {nextActionItems.length ? (
+                <InsightListCard
+                  title="Next Actions"
+                  description="Follow-up actions suggested by the ML and backend layers."
+                  items={nextActionItems}
+                />
+              ) : (
+                <EmptyStateCard
+                  title="No next actions"
+                  description="No next actions were generated for this scan."
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
