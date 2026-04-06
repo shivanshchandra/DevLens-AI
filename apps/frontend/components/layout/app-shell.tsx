@@ -1,6 +1,6 @@
 "use client"
 
-import { ReactNode, useState } from "react"
+import { ReactNode, useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -10,6 +10,7 @@ import {
   GitCompare,
   Home,
   Menu,
+  Sparkles,
   Users,
   X,
 } from "lucide-react"
@@ -67,14 +68,65 @@ function NavLink({
   )
 }
 
+function pageMeta(pathname: string) {
+  if (pathname.startsWith("/analyze")) {
+    return {
+      eyebrow: "Analysis workflow",
+      title: "Start, upload, and run scans",
+    }
+  }
+
+  if (pathname.startsWith("/scanning")) {
+    return {
+      eyebrow: "Live scan progress",
+      title: "Track staged scan execution",
+    }
+  }
+
+  if (pathname.startsWith("/dashboard")) {
+    return {
+      eyebrow: "Scan dashboard",
+      title: "Review code health and AI insights",
+    }
+  }
+
+  if (pathname.startsWith("/history")) {
+    return {
+      eyebrow: "Scan history",
+      title: "Reopen previous scans and reports",
+    }
+  }
+
+  if (pathname.startsWith("/compare")) {
+    return {
+      eyebrow: "Scan comparison",
+      title: "Measure changes between scans",
+    }
+  }
+
+  if (pathname.startsWith("/team")) {
+    return {
+      eyebrow: "Team mode",
+      title: "Track engineering risk across scans",
+    }
+  }
+
+  return {
+    eyebrow: "Premium AI Code Intelligence",
+    title: "Analyze, compare, and track engineering risk",
+  }
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  const meta = useMemo(() => pageMeta(pathname), [pathname])
+
   return (
     <div className="min-h-screen bg-[#050505] text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_30%)] pointer-events-none" />
-      <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_20%,transparent_80%,rgba(255,255,255,0.02))] pointer-events-none" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_30%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_20%,transparent_80%,rgba(255,255,255,0.02))]" />
 
       <div className="relative flex min-h-screen">
         <aside className="hidden w-72 border-r border-white/10 bg-black/40 backdrop-blur-xl md:flex md:flex-col">
@@ -96,6 +148,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="mb-3 px-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
               Navigation
             </div>
+
             <nav className="space-y-1.5">
               {navItems.map((item) => {
                 const active =
@@ -118,7 +171,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <div className="border-t border-white/10 p-4">
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <div className="mb-1 text-sm font-medium text-white">Local workspace</div>
+              <div className="mb-1 flex items-center gap-2 text-sm font-medium text-white">
+                <Sparkles className="h-4 w-4" />
+                Local workspace
+              </div>
               <p className="text-xs leading-5 text-zinc-400">
                 Analyze repos, compare scans, and review team-wide engineering risk.
               </p>
@@ -182,11 +238,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
                 <div>
                   <div className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">
-                    Premium AI Code Intelligence
+                    {meta.eyebrow}
                   </div>
-                  <div className="text-sm text-zinc-300">
-                    Analyze, compare, and track engineering risk
-                  </div>
+                  <div className="text-sm text-zinc-300">{meta.title}</div>
                 </div>
               </div>
 

@@ -1,5 +1,8 @@
 "use client"
 
+import Link from "next/link"
+import { ArrowRightLeft, Copy, History, Plus } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { StatusPill } from "@/components/dashboard/status-pill"
 
@@ -20,31 +23,62 @@ export function DashboardHeader({
 }: DashboardHeaderProps) {
   return (
     <div className="rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.07),transparent_35%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] p-6 md:p-7">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusPill label={isPublic ? "Public report" : "Internal report"} tone="info" />
-            <StatusPill label={`Scan ${scanId.slice(0, 8)}`} tone="neutral" />
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill
+                label={isPublic ? "Public report" : "Internal report"}
+                tone="info"
+              />
+              <StatusPill label={`Scan ${scanId.slice(0, 8)}`} tone="neutral" />
+            </div>
+
+            <div className="space-y-2">
+              <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
+                {title}
+              </h1>
+              <p className="max-w-2xl text-sm leading-6 text-zinc-400 md:text-base">
+                {description}
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
-              {title}
-            </h1>
-            <p className="max-w-2xl text-sm leading-6 text-zinc-400 md:text-base">
-              {description}
-            </p>
-          </div>
+          {!isPublic && onShare ? (
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={onShare}
+                className="border-white/10 bg-white/[0.03] text-zinc-200 hover:bg-white/[0.06]"
+              >
+                <Copy className="h-4 w-4" />
+                Copy share link
+              </Button>
+            </div>
+          ) : null}
         </div>
 
-        {!isPublic && onShare ? (
-          <div className="flex shrink-0 items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={onShare}
-              className="border-white/10 bg-white/[0.03] text-zinc-200 hover:bg-white/[0.06]"
-            >
-              Copy share link
+        {!isPublic ? (
+          <div className="flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:flex-wrap">
+            <Button asChild>
+              <Link href="/analyze">
+                <Plus className="h-4 w-4" />
+                New scan
+              </Link>
+            </Button>
+
+            <Button variant="outline" asChild>
+              <Link href="/compare">
+                <ArrowRightLeft className="h-4 w-4" />
+                Compare scans
+              </Link>
+            </Button>
+
+            <Button variant="ghost" asChild>
+              <Link href="/history">
+                <History className="h-4 w-4" />
+                Back to history
+              </Link>
             </Button>
           </div>
         ) : null}
