@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock3,
   Loader2,
+  RefreshCw,
   ScanLine,
   ShieldCheck,
 } from "lucide-react"
@@ -20,6 +21,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { PageErrorState } from "@/components/ui/page-error-state"
+import { PageLoadingState } from "@/components/ui/page-loading-state"
 
 const STEPS = [
   { key: "queued", label: "Queued", detail: "Waiting for worker assignment." },
@@ -90,12 +93,20 @@ export function ScanningClient({ scanId }: { scanId: string }) {
   const [statusMessage, setStatusMessage] = useState("Loading scan info...")
   const [metaText, setMetaText] = useState<string>("Loading scan info...")
   const [error, setError] = useState<string | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [redirecting, setRedirecting] = useState(false)
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const activeStep = useMemo(
     () => deriveActiveStep(currentStep, status),
     [currentStep, status]
   )
+
+  function retryFetch() {
+    setFetchError(null)
+    setRefreshKey((prev) => prev + 1)
+  }
 
   useEffect(() => {
     if (!scanId) return
@@ -109,6 +120,8 @@ export function ScanningClient({ scanId }: { scanId: string }) {
         const scan = await getScan(scanId)
         if (cancelled) return
 
+        setHasLoadedOnce(true)
+        setFetchError(null)
         setStatus(scan.status)
         setProgress(scan.progress ?? 0)
         setCurrentStep(scan.current_step ?? "queued")
@@ -132,7 +145,14 @@ export function ScanningClient({ scanId }: { scanId: string }) {
         }
       } catch (e: any) {
         if (cancelled) return
-        setError((prev) => prev ?? e?.message ?? "Failed to fetch scan status.")
+
+        const message = e?.message ?? "Failed to fetch scan status."
+
+        if (!hasLoadedOnce) {
+          setFetchError(message)
+        } else {
+          setFetchError((prev) => prev ?? message)
+        }
       }
     }
 
@@ -144,12 +164,15 @@ export function ScanningClient({ scanId }: { scanId: string }) {
       if (intervalId) clearInterval(intervalId)
       if (redirectTimeout) clearTimeout(redirectTimeout)
     }
-  }, [router, scanId])
+  }, [router, scanId, refreshKey, hasLoadedOnce])
 
   if (!scanId) {
     return (
       <div className="mx-auto max-w-3xl">
-        <Alert variant="destructive" className="rounded-2xl border-red-500/20 bg-red-500/10 text-red-200">
+        <Alert
+          variant="destructive"
+          className="rounded-2xl border-red-500/20 bg-red-500/10 text-red-200"
+        >
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Missing scan ID</AlertTitle>
           <AlertDescription>
@@ -160,10 +183,36 @@ export function ScanningClient({ scanId }: { scanId: string }) {
     )
   }
 
+  if (!hasLoadedOnce && !fetchError) {
+    return (
+      <div className="mx-auto max-w-6xl">
+        <PageLoadingState
+          title="Loading scan progress..."
+          description="We are connecting to the live scan status so you can track each stage in real time."
+        />
+      </div>
+    )
+  }
+
+  if (!hasLoadedOnce && fetchError) {
+    return (
+      <div className="mx-auto max-w-6xl">
+        <PageErrorState
+          title="Unable to load scan progress"
+          description={fetchError}
+          onRetry={retryFetch}
+          retryLabel="Retry loading"
+          primaryHref="/analyze"
+          primaryLabel="Start a new scan"
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-8">
       <section className="relative overflow-hidden rounded-[28px] border border-white/10 bg-premium-grid bg-white/[0.02] px-6 py-8 shadow-[0_30px_80px_rgba(0,0,0,0.35)] md:px-8 md:py-10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.08),transparent_25%)] pointer-events-none" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.08),transparent_25%)]" />
 
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-3xl">
@@ -204,7 +253,7 @@ export function ScanningClient({ scanId }: { scanId: string }) {
 
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <div className="mb-2 text-xs uppercase tracking-[0.18em] text-zinc-500">Current stage</div>
-              <div className="text-sm font-medium text-zinc-200">
+              <div className="text-sm font-medium capitalize text-zinc-200">
                 {currentStep.replace(/_/g, " ")}
               </div>
             </div>
@@ -218,6 +267,22 @@ export function ScanningClient({ scanId }: { scanId: string }) {
           </div>
         </div>
       </section>
+
+      {fetchError && hasLoadedOnce ? (
+        <Alert className="rounded-[24px] border-amber-500/20 bg-amber-500/10 text-amber-200">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Live refresh interrupted</AlertTitle>
+          <AlertDescription>
+            {fetchError} We’ll keep showing the last known scan state. You can retry now.
+          </AlertDescription>
+          <div className="mt-4">
+            <Button type="button" variant="outline" onClick={retryFetch}>
+              <RefreshCw className="h-4 w-4" />
+              Retry refresh
+            </Button>
+          </div>
+        </Alert>
+      ) : null}
 
       {error ? (
         <Alert
@@ -248,7 +313,9 @@ export function ScanningClient({ scanId }: { scanId: string }) {
               <p className="text-sm leading-6 text-zinc-400">
                 {status === "completed" && "Scan finished successfully. Redirecting to the dashboard..."}
                 {status === "failed" && "The scan stopped before completion."}
-                {status !== "completed" && status !== "failed" && `Current step: ${currentStep.replace(/_/g, " ")}`}
+                {status !== "completed" &&
+                  status !== "failed" &&
+                  `Current step: ${currentStep.replace(/_/g, " ")}`}
               </p>
             </div>
 
@@ -334,8 +401,8 @@ export function ScanningClient({ scanId }: { scanId: string }) {
                   What happens during scanning
                 </div>
                 <p className="text-sm leading-6 text-zinc-400">
-                  DevLens runs staged analysis across source retrieval, security and dependency checks,
-                  complexity analysis, risk signals, ML scoring, and final report assembly.
+                  DevLens runs staged analysis across source retrieval, security and dependency
+                  checks, complexity analysis, risk signals, ML scoring, and final report assembly.
                 </p>
               </div>
             </CardContent>
@@ -356,9 +423,15 @@ export function ScanningClient({ scanId }: { scanId: string }) {
               ) : null}
 
               {status === "failed" ? (
-                <Button className="w-full" variant="outline" asChild>
-                  <Link href="/analyze">Start another scan</Link>
-                </Button>
+                <>
+                  <Button className="w-full" variant="outline" asChild>
+                    <Link href="/analyze">Start another scan</Link>
+                  </Button>
+
+                  <Button className="w-full" variant="ghost" asChild>
+                    <Link href="/history">Go to scan history</Link>
+                  </Button>
+                </>
               ) : null}
 
               {(status === "queued" || status === "running") && (
@@ -368,8 +441,10 @@ export function ScanningClient({ scanId }: { scanId: string }) {
               )}
 
               {redirecting ? (
+                <p className="text-xs text-zinc-500">Redirecting to your dashboard...</p>
+              ) : status === "failed" ? (
                 <p className="text-xs text-zinc-500">
-                  Redirecting to your dashboard...
+                  This scan stopped before completion. You can return to Analyze and start again.
                 </p>
               ) : (
                 <p className="text-xs text-zinc-500">

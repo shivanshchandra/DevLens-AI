@@ -1,8 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowRight, GitPullRequest, Hash, Link2 } from "lucide-react"
+import {
+  ArrowRight,
+  GitPullRequest,
+  Hash,
+  Link2,
+  Loader2,
+  ShieldCheck,
+} from "lucide-react"
 
 import { createScan } from "@/lib/api/client"
 
@@ -26,19 +33,29 @@ export function PrTab() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const prAsNumber = Number(prNumber)
-  const canSubmit =
-    isValidUrl(repoUrl) && Number.isInteger(prAsNumber) && prAsNumber > 0 && !loading
+  const trimmedRepoUrl = repoUrl.trim()
+  const trimmedPrNumber = prNumber.trim()
+
+  const repoUrlLooksValid = useMemo(
+    () => (trimmedRepoUrl ? isValidUrl(trimmedRepoUrl) : false),
+    [trimmedRepoUrl]
+  )
+
+  const prAsNumber = Number(trimmedPrNumber)
+  const validPrNumber =
+    trimmedPrNumber.length > 0 && Number.isInteger(prAsNumber) && prAsNumber > 0
+
+  const canSubmit = repoUrlLooksValid && validPrNumber && !loading
 
   async function onSubmit() {
     setError(null)
 
-    if (!isValidUrl(repoUrl)) {
+    if (!repoUrlLooksValid) {
       setError("Please enter a valid repository URL.")
       return
     }
 
-    if (!Number.isInteger(prAsNumber) || prAsNumber <= 0) {
+    if (!validPrNumber) {
       setError("PR number must be a positive integer.")
       return
     }
@@ -47,7 +64,7 @@ export function PrTab() {
     try {
       const scan = await createScan({
         source_type: "pr",
-        repo_url: repoUrl,
+        repo_url: trimmedRepoUrl,
         pr_number: prAsNumber,
       })
 
@@ -71,6 +88,29 @@ export function PrTab() {
           <p className="mt-1 text-sm leading-6 text-zinc-400">
             Focus on changed files and detect risky pull request patterns faster.
           </p>
+        </div>
+      </div>
+
+      <div className="mb-5 grid gap-3 md:grid-cols-3">
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="mb-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+            Coverage
+          </div>
+          <div className="text-sm font-medium text-zinc-200">Changed PR scope</div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="mb-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+            Best for
+          </div>
+          <div className="text-sm font-medium text-zinc-200">Pre-merge review</div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="mb-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+            Next step
+          </div>
+          <div className="text-sm font-medium text-zinc-200">Live scan progress</div>
         </div>
       </div>
 
@@ -111,11 +151,34 @@ export function PrTab() {
         </div>
       </div>
 
+      {!repoUrlLooksValid && trimmedRepoUrl ? (
+        <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          The repository URL does not look valid yet.
+        </div>
+      ) : null}
+
+      {!validPrNumber && trimmedPrNumber ? (
+        <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          Pull request number must be a positive whole number.
+        </div>
+      ) : null}
+
       {error ? (
         <div className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
         </div>
       ) : null}
+
+      <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <div className="mb-2 flex items-center gap-2 text-sm font-medium text-zinc-200">
+          <ShieldCheck className="h-4 w-4" />
+          What happens next
+        </div>
+        <p className="text-sm leading-6 text-zinc-400">
+          DevLens starts a focused PR scan, then redirects you to the live scanning page so
+          you can track progress before opening the dashboard.
+        </p>
+      </div>
 
       <div className="mt-5 flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm leading-6 text-zinc-400">
@@ -123,8 +186,17 @@ export function PrTab() {
         </p>
 
         <Button onClick={onSubmit} disabled={!canSubmit} size="xl">
-          {loading ? "Starting scan..." : "Analyze Pull Request"}
-          {!loading ? <ArrowRight className="h-4 w-4" /> : null}
+          {loading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Starting scan...
+            </>
+          ) : (
+            <>
+              Analyze Pull Request
+              <ArrowRight className="h-4 w-4" />
+            </>
+          )}
         </Button>
       </div>
     </div>

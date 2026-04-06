@@ -2,7 +2,13 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowRight, FileArchive, UploadCloud } from "lucide-react"
+import {
+  ArrowRight,
+  FileArchive,
+  Loader2,
+  ShieldCheck,
+  UploadCloud,
+} from "lucide-react"
 
 import { uploadZipScan } from "@/lib/api/client"
 
@@ -80,6 +86,29 @@ export function ZipTab() {
         </div>
       </div>
 
+      <div className="mb-5 grid gap-3 md:grid-cols-3">
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="mb-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+            Source
+          </div>
+          <div className="text-sm font-medium text-zinc-200">Local ZIP archive</div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="mb-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+            Limit
+          </div>
+          <div className="text-sm font-medium text-zinc-200">{MAX_MB}MB max size</div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="mb-2 text-xs uppercase tracking-[0.18em] text-zinc-500">
+            Next step
+          </div>
+          <div className="text-sm font-medium text-zinc-200">Live scan progress</div>
+        </div>
+      </div>
+
       <div className="space-y-5">
         <div className="space-y-2">
           <Label htmlFor="zip">ZIP file</Label>
@@ -116,14 +145,34 @@ export function ZipTab() {
           ) : null}
         </div>
 
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-zinc-200">
+            <ShieldCheck className="h-4 w-4" />
+            What happens next
+          </div>
+          <p className="text-sm leading-6 text-zinc-400">
+            After upload, DevLens starts processing your archive and redirects you to the
+            live scanning workflow automatically.
+          </p>
+        </div>
+
         <div className="flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm leading-6 text-zinc-400">
             Upload the archive and continue to the live scanning workflow.
           </p>
 
           <Button onClick={onSubmit} disabled={!canSubmit} size="xl">
-            {loading ? "Uploading..." : "Analyze ZIP"}
-            {!loading ? <ArrowRight className="h-4 w-4" /> : null}
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Uploading...
+              </>
+            ) : (
+              <>
+                Analyze ZIP
+                <ArrowRight className="h-4 w-4" />
+              </>
+            )}
           </Button>
         </div>
       </div>
