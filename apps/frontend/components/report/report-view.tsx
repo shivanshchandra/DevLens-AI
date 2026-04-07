@@ -1,5 +1,7 @@
 "use client"
 
+import { useMemo, useState, useRef, useEffect } from "react"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -630,6 +632,69 @@ function buildInsightItems(
   return items
 }
 
+function shortLevel(level?: string | null) {
+  if (!level) return "Unknown"
+  return titleCase(level)
+}
+
+function buildQuickVerdict(params: {
+  healthScore?: number
+  grade?: string
+  criticalAndHighCount: number
+  architectureRiskLevel?: string | null
+  predictedRiskLevel?: string | null
+}) {
+  const {
+    healthScore,
+    grade,
+    criticalAndHighCount,
+    architectureRiskLevel,
+    predictedRiskLevel,
+  } = params
+
+  const health =
+    typeof healthScore === "number"
+      ? healthScore >= 80
+        ? "strong"
+        : healthScore >= 60
+          ? "fair"
+          : "fragile"
+      : "mixed"
+
+  const severityMessage =
+    criticalAndHighCount > 0
+      ? `${criticalAndHighCount} high-priority issue${
+          criticalAndHighCount === 1 ? "" : "s"
+        } need attention`
+      : "no critical or high-severity findings were detected"
+
+  const architectureMessage = architectureRiskLevel
+    ? `architecture pressure is ${String(architectureRiskLevel).toLowerCase()}`
+    : "architecture pressure is not prominent"
+
+  const mlMessage = predictedRiskLevel
+    ? `predicted risk is ${String(predictedRiskLevel).toLowerCase()}`
+    : "predicted risk is unavailable"
+
+  return `This repository currently looks ${health} overall with grade ${grade ?? "N/A"}. ${severityMessage}, ${architectureMessage}, and ${mlMessage}.`
+}
+
+function buildSimpleWhyItMatters(params: {
+  topRiskItems: string[]
+  recommendedActionItems: string[]
+}) {
+  const firstRisk = params.topRiskItems[0]
+  const firstAction = params.recommendedActionItems[0]
+
+  if (firstRisk && firstAction) {
+    return `${firstRisk} Start by ${firstAction.charAt(0).toLowerCase()}${firstAction.slice(1)}`
+  }
+
+  if (firstRisk) return firstRisk
+  if (firstAction) return `Recommended first action: ${firstAction}`
+  return "This scan completed successfully, but no detailed plain-English explanation was generated."
+}
+
 export function ReportView({
   scanId,
   results,
@@ -639,6 +704,19 @@ export function ReportView({
   results: Results
   isPublic?: boolean
 }) {
+
+  const [showDeepDive, setShowDeepDive] = useState(false)
+  const deepDiveRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (showDeepDive && deepDiveRef.current) {
+      deepDiveRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      })
+    }
+  }, [showDeepDive])
+
   const safeFindings = results.findings ?? []
   const normalizedFindings = normalizeFindingsForTable(safeFindings)
   const counts = severityCounts(safeFindings)
@@ -797,6 +875,36 @@ export function ReportView({
     riskExplanation?.narrative,
     technicalDebtExplanation?.narrative,
   ]).slice(0, 3)
+
+    const quickVerdict = useMemo(
+    () =>
+      buildQuickVerdict({
+        healthScore: results.healthScore,
+        grade: results.grade,
+        criticalAndHighCount,
+        architectureRiskLevel: architectureSummary.architectureRiskLevel,
+        predictedRiskLevel: riskPrediction?.level ?? ai.grounding?.predictedRiskLevel,
+      }),
+    [
+      results.healthScore,
+      results.grade,
+      criticalAndHighCount,
+      architectureSummary.architectureRiskLevel,
+      riskPrediction?.level,
+      ai.grounding?.predictedRiskLevel,
+    ]
+  )
+
+  const simpleWhyItMatters = useMemo(
+    () =>
+      buildSimpleWhyItMatters({
+        topRiskItems,
+        recommendedActionItems,
+      }),
+    [topRiskItems, recommendedActionItems]
+  )
+
+  const topPriorityItems = recommendedActionItems.slice(0, 3)
 
   const architectureSummaryItems = [
     {
@@ -1022,264 +1130,104 @@ export function ReportView({
         <MetricsGrid items={metricItems} />
       </div>
 
-      <div className="space-y-4">
+            <div className="space-y-4">
         <SectionHeader
-          title="AI Executive Layer"
-          description="Grounded narrative insights and practical next steps generated from the scan data."
+          title="Simple Summary"
+          description="A simpler first-pass explanation of what matters most in this scan."
         />
 
-        <AiSummaryCard summary={ai.summary} highlights={aiHighlights} />
+        <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+          <Card className="rounded-[28px] border-white/10 bg-[linear-gradient(180deg,rgba(59,130,246,0.08),rgba(255,255,255,0.02))]">
+            <CardContent className="space-y-5 p-6 md:p-7">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-zinc-200">Quick Verdict</div>
+                  <div className="text-sm text-zinc-400">
+                    Start here for the simplest plain-English summary.
+                  </div>
+                </div>
+
+                <StatusPill
+                  label={shortLevel(ai.riskExplanation?.level ?? riskPrediction?.level ?? results.grade)}
+                  tone={riskAccentFromLevel(
+                    ai.riskExplanation?.level ?? riskPrediction?.level ?? results.grade
+                  )}
+                />
+              </div>
+
+              <p className="text-sm leading-7 text-zinc-200 md:text-[15px]">
+                {quickVerdict}
+              </p>
+
+              <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
+                <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                  Why this matters
+                </div>
+                <p className="mt-2 text-sm leading-6 text-zinc-300">
+                  {simpleWhyItMatters}
+                </p>
+              </div>
+
+              {ai.summary ? (
+                <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
+                  <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                    AI short summary
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-zinc-300">
+                    {ai.summary}
+                  </p>
+                </div>
+              ) : null}
+
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[28px] border-white/10 bg-white/[0.03]">
+            <CardContent className="space-y-5 p-6">
+              <div className="space-y-1">
+                <div className="text-lg font-semibold text-white">Do this next</div>
+                <div className="text-sm text-zinc-400">
+                  Top priority actions from this scan.
+                </div>
+              </div>
+
+              {topPriorityItems.length ? (
+                <div className="space-y-3">
+                  {topPriorityItems.map((item, index) => (
+                    <div
+                      key={`${item}-${index}`}
+                      className="flex gap-3 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3"
+                    >
+                      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-xs font-semibold text-emerald-300">
+                        {index + 1}
+                      </div>
+                      <div className="text-sm text-zinc-300">{item}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-500">
+                  No immediate recommended actions were generated for this scan.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="grid gap-4 xl:grid-cols-2">
           <TopRisksCard
-            title={ai.riskExplanation?.title ?? "Top Risks"}
-            items={topRiskItems}
+            title="Top Risks"
+            items={topRiskItems.slice(0, 3)}
             level={ai.riskExplanation?.level ?? riskPrediction?.level}
           />
 
           <RecommendedActionsCard
-            title={ai.refactorPlan?.title ?? "Recommended Actions"}
-            items={recommendedActionItems}
+            title="Recommended Actions"
+            items={recommendedActionItems.slice(0, 3)}
           />
         </div>
       </div>
 
-      {hasAiInsights && (
-        <>
-          <Separator />
-
-          <div className="space-y-4">
-            <SectionHeader
-              title="Grounded AI Details"
-              description="Detailed grounded insight blocks generated by the backend."
-            />
-
-            <div className="grid gap-4 md:grid-cols-4">
-              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
-                <CardHeader>
-                  <CardTitle>AI Risk Level</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="text-3xl font-semibold text-white">
-                    {titleCase(ai.riskExplanation?.level)}
-                  </div>
-                  <StatusPill
-                    label={titleCase(ai.riskExplanation?.level)}
-                    tone={riskAccentFromLevel(ai.riskExplanation?.level)}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
-                <CardHeader>
-                  <CardTitle>Architecture Risk</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="text-3xl font-semibold text-white">
-                    {titleCase(ai.grounding?.architectureRiskLevel)}
-                  </div>
-                  <StatusPill
-                    label={titleCase(ai.grounding?.architectureRiskLevel)}
-                    tone={riskAccentFromLevel(ai.grounding?.architectureRiskLevel)}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
-                <CardHeader>
-                  <CardTitle>Predicted Risk</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="text-3xl font-semibold text-white">
-                    {titleCase(ai.grounding?.predictedRiskLevel)}
-                  </div>
-                  <StatusPill
-                    label={titleCase(ai.grounding?.predictedRiskLevel)}
-                    tone={riskAccentFromLevel(ai.grounding?.predictedRiskLevel)}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
-                <CardHeader>
-                  <CardTitle>Predicted Debt</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="text-3xl font-semibold text-white">
-                    {titleCase(ai.grounding?.predictedDebtLevel)}
-                  </div>
-                  <StatusPill
-                    label={titleCase(ai.grounding?.predictedDebtLevel)}
-                    tone={riskAccentFromLevel(ai.grounding?.predictedDebtLevel)}
-                  />
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
-                <CardHeader>
-                  <CardTitle>{ai.riskExplanation?.title ?? "Risk Explanation"}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-sm leading-6 text-zinc-300">
-                    {ai.riskExplanation?.narrative ?? "No grounded risk explanation available."}
-                  </p>
-
-                  {!!ai.riskExplanation?.bullets?.length && (
-                    <ul className="list-disc space-y-2 pl-5 text-sm text-zinc-400">
-                      {ai.riskExplanation.bullets.map((bullet, index) => (
-                        <li key={`${bullet}-${index}`}>{bullet}</li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
-                <CardHeader>
-                  <CardTitle>{ai.refactorPlan?.title ?? "Refactor Plan"}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {!!ai.refactorPlan?.steps?.length ? (
-                    <ol className="list-decimal space-y-2 pl-5 text-sm text-zinc-400">
-                      {ai.refactorPlan.steps.map((step, index) => (
-                        <li key={`${step}-${index}`}>{step}</li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p className="text-sm text-zinc-400">No grounded refactor plan available.</p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
-              <CardHeader>
-                <CardTitle>Grounding Data</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <InfoPairGrid items={groundingPairs} />
-              </CardContent>
-            </Card>
-          </div>
-        </>
-      )}
-
-      {hasArchitecture && (
-        <>
-          <Separator />
-
-          <div className="space-y-4">
-            <SectionHeader
-              title="Architecture Insights"
-              description="Structural signals based on file size, hotspot concentration, clustered findings, and module coupling pressure."
-            />
-
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {architectureSummaryItems.map((item) => (
-                <StatHighlightCard
-                  key={item.label}
-                  label={item.label}
-                  value={item.value}
-                  subtext={item.subtext}
-                />
-              ))}
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <InsightListCard
-                title="Architecture Smells"
-                description="Design and structure issues detected in the current scan."
-                items={architectureSmellItems}
-                emptyText="No architecture smells detected for this scan."
-              />
-
-              <InsightListCard
-                title="Architecture Recommendations"
-                description="Suggested improvements to reduce structural pressure."
-                items={architectureRecommendationItems}
-                emptyText="No architecture recommendations available."
-              />
-            </div>
-          </div>
-        </>
-      )}
-
-      {hasMlInsights && (
-        <>
-          <Separator />
-
-          <div className="space-y-4">
-            <SectionHeader
-              title="ML Insights"
-              description="ML-assisted predictions and explanations generated from scan signals."
-            />
-
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatHighlightCard
-                label="Predicted Risk"
-                value={riskPrediction?.level ?? "—"}
-                subtext={`Score: ${formatScore(riskPrediction?.score)}`}
-              />
-              <StatHighlightCard
-                label="Predicted Debt"
-                value={technicalDebtPrediction?.level ?? "—"}
-                subtext={`Score: ${formatScore(technicalDebtPrediction?.score)}`}
-              />
-              <Card className="rounded-[22px] border-white/10 bg-white/[0.03] sm:col-span-2">
-                <CardHeader>
-                  <CardTitle className="text-white">ML Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm leading-6 text-zinc-400">
-                  {summaryText ?? "No ML summary available for this scan."}
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <InsightListCard
-                title={riskExplanation?.title ?? "Risk Explanation"}
-                description={riskExplanation?.narrative ?? "No risk explanation available."}
-                items={buildInsightItems([
-                  ...(riskExplanation?.reasons ?? []).map((reason, index) => ({
-                    id: `risk-reason-${index}`,
-                    title: reason,
-                    badge: "Reason",
-                  })),
-                  ...(riskExplanation?.drivers ?? []).map((driver, index) => ({
-                    id: `risk-driver-${index}`,
-                    title: driver,
-                    badge: "Driver",
-                  })),
-                ])}
-                emptyText="No detailed ML risk factors available."
-              />
-
-              <InsightListCard
-                title={technicalDebtExplanation?.title ?? "Technical Debt Explanation"}
-                description={
-                  technicalDebtExplanation?.narrative ??
-                  "No technical debt explanation available."
-                }
-                items={buildInsightItems([
-                  ...(technicalDebtExplanation?.reasons ?? []).map((reason, index) => ({
-                    id: `debt-reason-${index}`,
-                    title: reason,
-                    badge: "Reason",
-                  })),
-                  ...(technicalDebtExplanation?.drivers ?? []).map((driver, index) => ({
-                    id: `debt-driver-${index}`,
-                    title: driver,
-                    badge: "Driver",
-                  })),
-                ])}
-                emptyText="No detailed technical debt factors available."
-              />
-            </div>
-          </div>
-        </>
-      )}
 
       <Separator />
 
@@ -1585,7 +1533,16 @@ export function ReportView({
         </TabsContent>
       </Tabs>
 
-      {hasMlInsights && (
+      <div className="flex justify-center pt-2">
+        <Button
+          onClick={() => setShowDeepDive((prev) => !prev)}
+          className="rounded-[18px] px-6"
+        >
+          {showDeepDive ? "Hide Deep Dive" : "Open Deep Dive"}
+        </Button>
+      </div>
+
+      {showDeepDive && hasAiInsights && (
         <>
           <Separator />
 
@@ -1625,6 +1582,245 @@ export function ReportView({
           </div>
         </>
       )}
+
+      {showDeepDive && hasArchitecture && (
+        <>
+          <Separator />
+
+          <div className="space-y-4">
+            <SectionHeader
+              title="Architecture Insights"
+              description="Structural signals based on file size, hotspot concentration, clustered findings, and module coupling pressure."
+            />
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {architectureSummaryItems.map((item) => (
+                <StatHighlightCard
+                  key={item.label}
+                  label={item.label}
+                  value={item.value}
+                  subtext={item.subtext}
+                />
+              ))}
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              <InsightListCard
+                title="Architecture Smells"
+                description="Design and structure issues detected in the current scan."
+                items={architectureSmellItems}
+                emptyText="No architecture smells detected for this scan."
+              />
+
+              <InsightListCard
+                title="Architecture Recommendations"
+                description="Suggested improvements to reduce structural pressure."
+                items={architectureRecommendationItems}
+                emptyText="No architecture recommendations available."
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      {showDeepDive && hasMlInsights && (
+        <>
+          <Separator />
+
+          <div className="space-y-4">
+            <SectionHeader
+              title="ML Insights"
+              description="ML-assisted predictions and explanations generated from scan signals."
+            />
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <StatHighlightCard
+                label="Predicted Risk"
+                value={riskPrediction?.level ?? "—"}
+                subtext={`Score: ${formatScore(riskPrediction?.score)}`}
+              />
+              <StatHighlightCard
+                label="Predicted Debt"
+                value={technicalDebtPrediction?.level ?? "—"}
+                subtext={`Score: ${formatScore(technicalDebtPrediction?.score)}`}
+              />
+              <Card className="rounded-[22px] border-white/10 bg-white/[0.03] sm:col-span-2">
+                <CardHeader>
+                  <CardTitle className="text-white">ML Summary</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm leading-6 text-zinc-400">
+                  {summaryText ?? "No ML summary available for this scan."}
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              <InsightListCard
+                title={riskExplanation?.title ?? "Risk Explanation"}
+                description={riskExplanation?.narrative ?? "No risk explanation available."}
+                items={buildInsightItems([
+                  ...(riskExplanation?.reasons ?? []).map((reason, index) => ({
+                    id: `risk-reason-${index}`,
+                    title: reason,
+                    badge: "Reason",
+                  })),
+                  ...(riskExplanation?.drivers ?? []).map((driver, index) => ({
+                    id: `risk-driver-${index}`,
+                    title: driver,
+                    badge: "Driver",
+                  })),
+                ])}
+                emptyText="No detailed ML risk factors available."
+              />
+
+              <InsightListCard
+                title={technicalDebtExplanation?.title ?? "Technical Debt Explanation"}
+                description={
+                  technicalDebtExplanation?.narrative ??
+                  "No technical debt explanation available."
+                }
+                items={buildInsightItems([
+                  ...(technicalDebtExplanation?.reasons ?? []).map((reason, index) => ({
+                    id: `debt-reason-${index}`,
+                    title: reason,
+                    badge: "Reason",
+                  })),
+                  ...(technicalDebtExplanation?.drivers ?? []).map((driver, index) => ({
+                    id: `debt-driver-${index}`,
+                    title: driver,
+                    badge: "Driver",
+                  })),
+                ])}
+                emptyText="No detailed technical debt factors available."
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+
+      {showDeepDive && hasAiInsights && (
+        <div ref={deepDiveRef} className="space-y-6">
+          <Separator />
+
+          <div className="space-y-4">
+            <SectionHeader
+              title="Grounded AI Details"
+              description="Detailed grounded insight blocks generated by the backend."
+            />
+
+            <div className="grid gap-4 md:grid-cols-4">
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+                <CardHeader>
+                  <CardTitle>AI Risk Level</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-semibold text-white">
+                    {titleCase(ai.riskExplanation?.level)}
+                  </div>
+                  <StatusPill
+                    label={titleCase(ai.riskExplanation?.level)}
+                    tone={riskAccentFromLevel(ai.riskExplanation?.level)}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+                <CardHeader>
+                  <CardTitle>Architecture Risk</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-semibold text-white">
+                    {titleCase(ai.grounding?.architectureRiskLevel)}
+                  </div>
+                  <StatusPill
+                    label={titleCase(ai.grounding?.architectureRiskLevel)}
+                    tone={riskAccentFromLevel(ai.grounding?.architectureRiskLevel)}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+                <CardHeader>
+                  <CardTitle>Predicted Risk</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-semibold text-white">
+                    {titleCase(ai.grounding?.predictedRiskLevel)}
+                  </div>
+                  <StatusPill
+                    label={titleCase(ai.grounding?.predictedRiskLevel)}
+                    tone={riskAccentFromLevel(ai.grounding?.predictedRiskLevel)}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+                <CardHeader>
+                  <CardTitle>Predicted Debt</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="text-3xl font-semibold text-white">
+                    {titleCase(ai.grounding?.predictedDebtLevel)}
+                  </div>
+                  <StatusPill
+                    label={titleCase(ai.grounding?.predictedDebtLevel)}
+                    tone={riskAccentFromLevel(ai.grounding?.predictedDebtLevel)}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+                <CardHeader>
+                  <CardTitle>{ai.riskExplanation?.title ?? "Risk Explanation"}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm leading-6 text-zinc-300">
+                    {ai.riskExplanation?.narrative ?? "No grounded risk explanation available."}
+                  </p>
+
+                  {!!ai.riskExplanation?.bullets?.length && (
+                    <ul className="list-disc space-y-2 pl-5 text-sm text-zinc-400">
+                      {ai.riskExplanation.bullets.map((bullet, index) => (
+                        <li key={`${bullet}-${index}`}>{bullet}</li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+                <CardHeader>
+                  <CardTitle>{ai.refactorPlan?.title ?? "Refactor Plan"}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {!!ai.refactorPlan?.steps?.length ? (
+                    <ol className="list-decimal space-y-2 pl-5 text-sm text-zinc-400">
+                      {ai.refactorPlan.steps.map((step, index) => (
+                        <li key={`${step}-${index}`}>{step}</li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="text-sm text-zinc-400">No grounded refactor plan available.</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+              <CardHeader>
+                <CardTitle>Grounding Data</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <InfoPairGrid items={groundingPairs} />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
