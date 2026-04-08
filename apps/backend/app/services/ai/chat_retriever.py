@@ -653,6 +653,7 @@ def retrieve_chat_context(result_json: dict, question: str) -> dict:
         "question": question,
         "intent": intent,
         "status": scope_state,
+        "is_supported": intent in SUPPORTED_INTENTS,
         "scopeNote": scope_note,
         "matchedSections": matched_sections,
         "overview": overview,

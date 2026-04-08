@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.ai.chat_prompt_builder import build_chat_prompt
+from app.services.ai.llm_client import LlmUnavailableError, generate_text_with_llm
+
 
 def _safe_dict(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
@@ -42,23 +45,6 @@ def _top_file_labels(citations: list[dict[str, Any]], limit: int = 4) -> list[st
     return seen
 
 
-def _citations_to_evidence_lines(citations: list[dict[str, Any]], limit: int = 4) -> list[str]:
-    lines: list[str] = []
-    for item in citations[:limit]:
-        label = str(item.get("label") or "Source").strip()
-        reason = str(item.get("reason") or "").strip()
-        section = str(item.get("section") or "").strip()
-
-        detail = label
-        if section:
-            detail += f" ({section})"
-        if reason:
-            detail += f" — {reason}"
-
-        lines.append(f"- {detail}")
-    return lines
-
-
 def _repo_only_message() -> str:
     return (
         "I can help with questions about this scanned repository or project only.\n\n"
@@ -71,7 +57,7 @@ def _repo_only_message() -> str:
     )
 
 
-def _build_summary_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
+def _deterministic_summary_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
     quick = _safe_dict(retrieval.get("quickFacts"))
     ai = _safe_dict(result_json.get("ai"))
 
@@ -102,18 +88,16 @@ def _build_summary_answer(result_json: dict[str, Any], retrieval: dict[str, Any]
         why.append(summary)
     why.extend(_safe_list(retrieval.get("evidence"))[:3])
 
-    parts = [
-        direct,
-        "What to do next:",
-        *_bullet_lines(actions, limit=4),
-        "Why I’m saying this:",
-        *_bullet_lines([str(item) for item in why], limit=4),
-    ]
-
-    return "\n\n".join([parts[0], "\n".join(parts[1:3]), "\n".join(parts[3:])])
+    return (
+        f"{direct}\n\n"
+        f"What to do next:\n"
+        f"{chr(10).join(_bullet_lines(actions, limit=4))}\n\n"
+        f"Why I’m saying this:\n"
+        f"{chr(10).join(_bullet_lines([str(item) for item in why], limit=4))}"
+    )
 
 
-def _build_risk_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
+def _deterministic_risk_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
     quick = _safe_dict(retrieval.get("quickFacts"))
     ai = _safe_dict(result_json.get("ai"))
     risk_explanation = _safe_dict(ai.get("riskExplanation"))
@@ -146,20 +130,16 @@ def _build_risk_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -
     why.extend([str(item) for item in _safe_list(risk_explanation.get("bullets"))[:3]])
     why.extend([str(item) for item in _safe_list(retrieval.get("evidence"))[:2]])
 
-    evidence_lines = _citations_to_evidence_lines(_safe_list(retrieval.get("citations")), limit=4)
-
     return (
         f"{direct}\n\n"
         f"What to do next:\n"
         f"{chr(10).join(_bullet_lines(actions, limit=4))}\n\n"
         f"Why I’m saying this:\n"
-        f"{chr(10).join(_bullet_lines(why, limit=4))}\n\n"
-        f"Evidence used:\n"
-        f"{chr(10).join(evidence_lines) if evidence_lines else '- Current scan findings and risk summaries'}"
+        f"{chr(10).join(_bullet_lines(why, limit=4))}"
     )
 
 
-def _build_refactor_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
+def _deterministic_refactor_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
     quick = _safe_dict(retrieval.get("quickFacts"))
     ai = _safe_dict(result_json.get("ai"))
     refactor_plan = _safe_dict(ai.get("refactorPlan"))
@@ -173,9 +153,7 @@ def _build_refactor_answer(result_json: dict[str, Any], retrieval: dict[str, Any
             "These are the strongest current refactor targets from the scan."
         )
     else:
-        direct = (
-            "You should start with the highest-severity findings and top refactor targets from the scan."
-        )
+        direct = "You should start with the highest-severity findings and top refactor targets from the scan."
 
     actions = []
     if critical_count > 0:
@@ -195,7 +173,7 @@ def _build_refactor_answer(result_json: dict[str, Any], retrieval: dict[str, Any
     )
 
 
-def _build_architecture_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
+def _deterministic_architecture_answer(retrieval: dict[str, Any]) -> str:
     quick = _safe_dict(retrieval.get("quickFacts"))
 
     arch_level = str(quick.get("architectureRiskLevel") or "unknown")
@@ -213,7 +191,7 @@ def _build_architecture_answer(result_json: dict[str, Any], retrieval: dict[str,
     actions = [
         "Start with files or modules that appear as coupling hotspots and dependency hubs.",
         "Split overloaded modules and reduce cross-boundary imports.",
-        "Use architecture recommendations and top refactor targets together instead of treating them separately.",
+        "Use architecture recommendations and top refactor targets together.",
         "Rerun the scan after structural cleanup to confirm the architecture risk is dropping.",
     ]
 
@@ -222,13 +200,13 @@ def _build_architecture_answer(result_json: dict[str, Any], retrieval: dict[str,
     return (
         f"{direct}\n\n"
         f"What to do next:\n"
-        f"{chr(10).join(_bullet_lines([str(item) for item in actions], limit=4))}\n\n"
+        f"{chr(10).join(_bullet_lines(actions, limit=4))}\n\n"
         f"Why I’m saying this:\n"
         f"{chr(10).join(_bullet_lines([str(item) for item in why], limit=4))}"
     )
 
 
-def _build_files_answer(retrieval: dict[str, Any]) -> str:
+def _deterministic_files_answer(retrieval: dict[str, Any]) -> str:
     top_files = _top_file_labels(_safe_list(retrieval.get("citations")), limit=4)
     evidence = _safe_list(retrieval.get("evidence"))[:4]
 
@@ -252,64 +230,7 @@ def _build_files_answer(retrieval: dict[str, Any]) -> str:
     )
 
 
-def _build_quick_wins_answer(retrieval: dict[str, Any]) -> str:
-    quick = _safe_dict(retrieval.get("quickFacts"))
-    top_files = _safe_list(quick.get("topFiles"))
-    evidence = _safe_list(retrieval.get("evidence"))
-
-    direct = (
-        "The fastest wins are usually the high-signal cleanup items that improve risk without needing deep architectural rewrites."
-    )
-
-    actions = []
-    if top_files:
-        actions.append(f"Start with {', '.join(top_files[:3])} because they already surface as priority targets.")
-    actions.append("Apply the fix suggestions that remove high-severity findings quickly.")
-    actions.append("Reduce obvious complexity or duplication in hotspot files.")
-    actions.append("Rerun the scan after the quick fixes to measure impact.")
-
-    return (
-        f"{direct}\n\n"
-        f"What to do next:\n"
-        f"{chr(10).join(_bullet_lines(actions, limit=4))}\n\n"
-        f"Why I’m saying this:\n"
-        f"{chr(10).join(_bullet_lines([str(item) for item in evidence], limit=4))}"
-    )
-
-
-def _build_production_answer(retrieval: dict[str, Any]) -> str:
-    quick = _safe_dict(retrieval.get("quickFacts"))
-
-    critical_count = int(quick.get("criticalCount") or 0)
-    high_count = int(quick.get("highCount") or 0)
-    arch_level = str(quick.get("architectureRiskLevel") or "unknown")
-
-    if critical_count > 0:
-        direct = "This repository is not ready for production yet because critical issues are still present."
-    elif high_count > 0 or arch_level in {"high", "critical"}:
-        direct = "This repository needs another cleanup pass before production because meaningful risk is still present."
-    else:
-        direct = "This repository looks closer to production-ready, but you should still complete a final risk cleanup pass."
-
-    actions = [
-        "Resolve critical and high-severity findings first.",
-        "Review architecture hotspots that could make production issues harder to debug or change safely.",
-        "Confirm the top refactor targets have an owner and a concrete cleanup plan.",
-        "Rerun the scan and compare results before release.",
-    ]
-
-    evidence = _safe_list(retrieval.get("evidence"))[:4]
-
-    return (
-        f"{direct}\n\n"
-        f"What to do next:\n"
-        f"{chr(10).join(_bullet_lines(actions, limit=4))}\n\n"
-        f"Why I’m saying this:\n"
-        f"{chr(10).join(_bullet_lines([str(item) for item in evidence], limit=4))}"
-    )
-
-
-def _build_general_repo_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
+def _deterministic_general_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
     quick = _safe_dict(retrieval.get("quickFacts"))
     ai = _safe_dict(result_json.get("ai"))
 
@@ -341,43 +262,58 @@ def _build_general_repo_answer(result_json: dict[str, Any], retrieval: dict[str,
     )
 
 
-def generate_chat_answer(result_json: dict, retrieval: dict[str, Any]) -> str:
+def _generate_deterministic_chat_answer(result_json: dict, retrieval: dict[str, Any]) -> str:
     if not bool(retrieval.get("is_supported")):
         return _repo_only_message()
 
     intent = str(retrieval.get("intent") or "general_repo")
 
     if intent == "summary":
-        return _build_summary_answer(result_json, retrieval)
-
-    if intent == "risk":
-        return _build_risk_answer(result_json, retrieval)
-
-    if intent == "security":
-        return _build_risk_answer(result_json, retrieval)
-
+        return _deterministic_summary_answer(result_json, retrieval)
+    if intent in {"risk", "security"}:
+        return _deterministic_risk_answer(result_json, retrieval)
     if intent == "refactor":
-        return _build_refactor_answer(result_json, retrieval)
-
+        return _deterministic_refactor_answer(result_json, retrieval)
     if intent == "architecture":
-        return _build_architecture_answer(result_json, retrieval)
-
+        return _deterministic_architecture_answer(retrieval)
     if intent == "files":
-        return _build_files_answer(retrieval)
+        return _deterministic_files_answer(retrieval)
 
-    if intent == "quick_wins":
-        return _build_quick_wins_answer(retrieval)
+    return _deterministic_general_answer(result_json, retrieval)
 
-    if intent == "production":
-        return _build_production_answer(retrieval)
 
-    if intent == "debt":
-        return _build_general_repo_answer(result_json, retrieval)
+def generate_chat_answer(result_json: dict, retrieval: dict[str, Any]) -> str:
+    is_supported = (
+        bool(retrieval.get("is_supported"))
+        or str(retrieval.get("status") or "").strip().lower() == "supported"
+    )
 
-    if intent == "quality":
-        return _build_general_repo_answer(result_json, retrieval)
+    if not is_supported:
+        print("DEBUG unsupported question path", flush=True)
+        return _repo_only_message()
 
-    if intent == "compare":
-        return _build_general_repo_answer(result_json, retrieval)
+    deterministic_answer = _generate_deterministic_chat_answer(result_json, retrieval)
 
-    return _build_general_repo_answer(result_json, retrieval)
+    try:
+        print("🚀 Trying LLM...", flush=True)
+
+        prompt = build_chat_prompt(result_json=result_json, retrieval=retrieval)
+
+        response = generate_text_with_llm(
+            prompt=prompt,
+            system_instruction=(
+                "You are DevLens AI, a helpful repository assistant. "
+                "Stay grounded in the provided scan data, but explain things like a mentor. "
+                "Be simple, clear, beginner-friendly, practical, and natural. "
+                "Do not sound robotic. "
+                "Do not invent repository facts."
+            ),
+        )
+
+        print("✅ LLM SUCCESS", flush=True)
+        return response
+
+    except LlmUnavailableError as e:
+        print("❌ LLM FAILED:", str(e), flush=True)
+        print("DEBUG returning deterministic fallback", flush=True)
+        return deterministic_answer

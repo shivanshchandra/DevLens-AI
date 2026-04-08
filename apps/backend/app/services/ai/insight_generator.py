@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
 from typing import Any
+
+from app.services.ai.chat_prompt_builder import build_scan_rewrite_prompt
+from app.services.ai.llm_client import LlmUnavailableError, generate_text_with_llm
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -298,6 +302,50 @@ def _build_refactor_plan(
     }
 
 
+def _maybe_rewrite_with_llm(
+    *,
+    result: dict[str, Any],
+    insights: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        prompt = build_scan_rewrite_prompt(
+            result_json=result,
+            deterministic_insights=insights,
+        )
+        raw_text = generate_text_with_llm(
+            prompt=prompt,
+            system_instruction=(
+                "You rewrite repository scan insights for a beginner-friendly developer product. "
+                "Return only valid JSON."
+            ),
+        )
+        parsed = json.loads(raw_text)
+
+        summary = str(parsed.get("summary") or "").strip()
+        risk_narrative = str(parsed.get("risk_narrative") or "").strip()
+        risk_bullets = parsed.get("risk_bullets") or []
+        refactor_steps = parsed.get("refactor_steps") or []
+
+        if summary:
+            insights["summary"] = summary
+
+        risk_explanation = _safe_dict(insights.get("riskExplanation"))
+        if risk_narrative:
+            risk_explanation["narrative"] = risk_narrative
+        if isinstance(risk_bullets, list) and risk_bullets:
+            risk_explanation["bullets"] = [str(item) for item in risk_bullets[:5]]
+        insights["riskExplanation"] = risk_explanation
+
+        refactor_plan = _safe_dict(insights.get("refactorPlan"))
+        if isinstance(refactor_steps, list) and refactor_steps:
+            refactor_plan["steps"] = [str(item) for item in refactor_steps[:6]]
+        insights["refactorPlan"] = refactor_plan
+
+        return insights
+    except (LlmUnavailableError, json.JSONDecodeError, TypeError, ValueError):
+        return insights
+
+
 def generate_ai_insights(result: dict[str, Any]) -> dict[str, Any]:
     findings = _safe_list(result.get("findings"))
     architecture = _safe_dict(result.get("architecture"))
@@ -368,7 +416,7 @@ def generate_ai_insights(result: dict[str, Any]) -> dict[str, Any]:
         fix_suggestions_count=len(fix_suggestions),
     )
 
-    return {
+    insights = {
         "version": "v1",
         "summary": summary,
         "riskExplanation": risk_explanation,
@@ -387,3 +435,5 @@ def generate_ai_insights(result: dict[str, Any]) -> dict[str, Any]:
             "topRefactorTargets": top_files,
         },
     }
+
+    return _maybe_rewrite_with_llm(result=result, insights=insights)
