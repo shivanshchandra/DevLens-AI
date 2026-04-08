@@ -13,17 +13,17 @@ export function AiSummaryCard({
       <CardContent className="space-y-5 p-6 md:p-7">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
-            <div className="text-sm font-medium text-zinc-200">AI Executive Summary</div>
+            <div className="text-sm font-medium text-zinc-200">AI Simple Summary</div>
             <div className="text-sm text-zinc-400">
-              Grounded summary based on findings, ML signals, and architecture pressure.
+              Beginner-friendly explanation generated from the real scan result.
             </div>
           </div>
 
-          <StatusPill label="Grounded AI" tone="info" />
+          <StatusPill label="LLM + Fallback" tone="info" />
         </div>
 
         <p className="text-sm leading-7 text-zinc-200 md:text-[15px]">
-          {summary ?? "No grounded AI summary is available for this scan yet."}
+          {summary ?? "No simple AI summary is available for this scan yet."}
         </p>
 
         {highlights?.length ? (

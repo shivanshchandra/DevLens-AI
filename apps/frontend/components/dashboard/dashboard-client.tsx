@@ -7,7 +7,6 @@ import {
   ArrowRight,
   ArrowRightLeft,
   History,
-  Loader2,
   RefreshCw,
 } from "lucide-react"
 
@@ -16,6 +15,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ReportView } from "@/components/report/report-view"
 import { PageErrorState } from "@/components/ui/page-error-state"
 import { PageLoadingState } from "@/components/ui/page-loading-state"
+import { AiSummaryCard } from "@/components/dashboard/ai-summary-card"
 import { getScanResults } from "@/lib/api/client"
 
 export function DashboardClient({ scanId }: { scanId: string }) {
@@ -162,6 +162,18 @@ export function DashboardClient({ scanId }: { scanId: string }) {
     return null
   }
 
+  const ai = results?.ai ?? {}
+  const simpleSummary =
+    ai?.simpleSummary ||
+    ai?.summary ||
+    "No simple AI summary is available for this scan yet."
+
+  const simpleHighlights = Array.isArray(ai?.simpleHighlights)
+    ? ai.simpleHighlights
+    : Array.isArray(ai?.riskExplanation?.bullets)
+      ? ai.riskExplanation.bullets.slice(0, 3)
+      : []
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
@@ -224,6 +236,8 @@ export function DashboardClient({ scanId }: { scanId: string }) {
           </Link>
         </Button>
       </div>
+
+      <AiSummaryCard summary={simpleSummary} highlights={simpleHighlights} />
 
       <div className="rounded-[28px] border border-white/10 bg-white/[0.02] p-4 md:p-6">
         <ReportView scanId={scanId} results={results} />

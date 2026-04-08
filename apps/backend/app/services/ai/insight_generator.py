@@ -158,6 +158,50 @@ def _build_summary(
     return " ".join(summary_parts)
 
 
+def _build_simple_summary(
+    *,
+    health_score: float,
+    grade: str,
+    total_findings: int,
+    critical_count: int,
+    high_count: int,
+    architecture_smells_count: int,
+    arch_level: str | None,
+    ml_risk_level: str | None,
+) -> str:
+    if total_findings == 0 and architecture_smells_count == 0 and (arch_level or "low") == "low":
+        return (
+            f"This repository looks healthy right now. It scored {int(round(health_score))} "
+            f"with grade {grade}, and the scan did not find major issues."
+        )
+
+    parts: list[str] = [
+        f"This repository currently has a health score of {int(round(health_score))} and grade {grade}."
+    ]
+
+    if total_findings > 0:
+        parts.append(
+            f"The scan found {total_findings} issues, including {critical_count} critical and {high_count} high-severity findings."
+        )
+    else:
+        parts.append("The scan did not find major code issues, but there are still some structural signals worth reviewing.")
+
+    if architecture_smells_count > 0:
+        parts.append(
+            f"Architecture analysis also found {architecture_smells_count} structural smell indicators."
+        )
+
+    if arch_level:
+        parts.append(f"Overall architecture risk is currently {arch_level}.")
+
+    if ml_risk_level:
+        parts.append(f"ML signals estimate delivery risk as {ml_risk_level}.")
+
+    parts.append("A good next step is to review the top refactor targets and architecture recommendations before making broader changes.")
+
+    return " ".join(parts)
+
+
 def _build_risk_explanation(
     *,
     health_score: float,
@@ -327,13 +371,15 @@ def _maybe_rewrite_with_llm(
         refactor_steps = parsed.get("refactor_steps") or []
 
         if summary:
-            insights["summary"] = summary
+            insights["simpleSummary"] = summary
 
         risk_explanation = _safe_dict(insights.get("riskExplanation"))
         if risk_narrative:
             risk_explanation["narrative"] = risk_narrative
         if isinstance(risk_bullets, list) and risk_bullets:
-            risk_explanation["bullets"] = [str(item) for item in risk_bullets[:5]]
+            cleaned_bullets = [str(item) for item in risk_bullets[:5]]
+            risk_explanation["bullets"] = cleaned_bullets
+            insights["simpleHighlights"] = cleaned_bullets[:3]
         insights["riskExplanation"] = risk_explanation
 
         refactor_plan = _safe_dict(insights.get("refactorPlan"))
@@ -393,6 +439,17 @@ def generate_ai_insights(result: dict[str, Any]) -> dict[str, Any]:
         ml_debt_level=ml_debt_level,
     )
 
+    simple_summary = _build_simple_summary(
+        health_score=health_score,
+        grade=grade,
+        total_findings=len(findings),
+        critical_count=critical_count,
+        high_count=high_count,
+        architecture_smells_count=architecture_smells_count,
+        arch_level=arch_level,
+        ml_risk_level=ml_risk_level,
+    )
+
     risk_explanation = _build_risk_explanation(
         health_score=health_score,
         total_findings=len(findings),
@@ -417,8 +474,10 @@ def generate_ai_insights(result: dict[str, Any]) -> dict[str, Any]:
     )
 
     insights = {
-        "version": "v1",
+        "version": "v2",
         "summary": summary,
+        "simpleSummary": simple_summary,
+        "simpleHighlights": risk_explanation.get("bullets", [])[:3],
         "riskExplanation": risk_explanation,
         "refactorPlan": refactor_plan,
         "grounding": {

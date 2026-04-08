@@ -57,8 +57,12 @@ def _repo_only_message() -> str:
     )
 
 
+def _quick_facts(retrieval: dict[str, Any]) -> dict[str, Any]:
+    return _safe_dict(retrieval.get("quickFacts") or retrieval.get("overview"))
+
+
 def _deterministic_summary_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
-    quick = _safe_dict(retrieval.get("quickFacts"))
+    quick = _quick_facts(retrieval)
     ai = _safe_dict(result_json.get("ai"))
 
     health_score = int(round(float(quick.get("healthScore") or 0)))
@@ -67,7 +71,7 @@ def _deterministic_summary_answer(result_json: dict[str, Any], retrieval: dict[s
     critical_count = int(quick.get("criticalCount") or 0)
     high_count = int(quick.get("highCount") or 0)
 
-    summary = _first_non_empty(ai.get("summary"))
+    summary = _first_non_empty(ai.get("simpleSummary"), ai.get("summary"))
     direct = (
         f"This repository currently has a health score of {health_score} with grade {grade}. "
         f"It has {total_findings} findings, including {critical_count} critical and {high_count} high-severity issues."
@@ -78,7 +82,7 @@ def _deterministic_summary_answer(result_json: dict[str, Any], retrieval: dict[s
         actions.append("Resolve critical issues before broader cleanup.")
     if high_count > 0:
         actions.append("Address high-severity findings next.")
-    top_files = quick.get("topFiles") or []
+    top_files = quick.get("topRefactorTargets") or quick.get("topFiles") or []
     if top_files:
         actions.append(f"Start with {', '.join(top_files[:3])}.")
     actions.append("After the first cleanup pass, rerun the scan to confirm improvement.")
@@ -98,7 +102,7 @@ def _deterministic_summary_answer(result_json: dict[str, Any], retrieval: dict[s
 
 
 def _deterministic_risk_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
-    quick = _safe_dict(retrieval.get("quickFacts"))
+    quick = _quick_facts(retrieval)
     ai = _safe_dict(result_json.get("ai"))
     risk_explanation = _safe_dict(ai.get("riskExplanation"))
 
@@ -110,7 +114,7 @@ def _deterministic_risk_answer(result_json: dict[str, Any], retrieval: dict[str,
     )
     critical_count = int(quick.get("criticalCount") or 0)
     high_count = int(quick.get("highCount") or 0)
-    top_files = _safe_list(quick.get("topFiles"))
+    top_files = _safe_list(quick.get("topRefactorTargets") or quick.get("topFiles"))
 
     direct = f"This repository looks {level} risk overall based on the current scan."
 
@@ -140,17 +144,22 @@ def _deterministic_risk_answer(result_json: dict[str, Any], retrieval: dict[str,
 
 
 def _deterministic_refactor_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
-    quick = _safe_dict(retrieval.get("quickFacts"))
+    quick = _quick_facts(retrieval)
     ai = _safe_dict(result_json.get("ai"))
     refactor_plan = _safe_dict(ai.get("refactorPlan"))
-    top_files = _safe_list(quick.get("topFiles"))
+    top_files = _safe_list(quick.get("topRefactorTargets") or quick.get("topFiles"))
     critical_count = int(quick.get("criticalCount") or 0)
     high_count = int(quick.get("highCount") or 0)
+    architecture_smells = int(quick.get("architectureSmells") or 0)
 
     if top_files:
         direct = (
             f"You should start with {', '.join(top_files[:3])}. "
             "These are the strongest current refactor targets from the scan."
+        )
+    elif architecture_smells > 0:
+        direct = (
+            "There are no urgent file-level refactor targets right now, so the best next step is to review the architecture smell indicators and improve structural weak points first."
         )
     else:
         direct = "You should start with the highest-severity findings and top refactor targets from the scan."
@@ -174,7 +183,7 @@ def _deterministic_refactor_answer(result_json: dict[str, Any], retrieval: dict[
 
 
 def _deterministic_architecture_answer(retrieval: dict[str, Any]) -> str:
-    quick = _safe_dict(retrieval.get("quickFacts"))
+    quick = _quick_facts(retrieval)
 
     arch_level = str(quick.get("architectureRiskLevel") or "unknown")
     smells = int(quick.get("architectureSmells") or 0)
@@ -230,15 +239,51 @@ def _deterministic_files_answer(retrieval: dict[str, Any]) -> str:
     )
 
 
+def _deterministic_production_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
+    quick = _quick_facts(retrieval)
+    architecture_risk = str(quick.get("architectureRiskLevel") or "unknown")
+    critical_count = int(quick.get("criticalCount") or 0)
+    high_count = int(quick.get("highCount") or 0)
+    health_score = int(round(float(quick.get("healthScore") or 0)))
+
+    if critical_count == 0 and high_count == 0 and architecture_risk in {"low", "unknown"}:
+        direct = (
+            f"This scan suggests the project is in a fairly safe state to deploy from a code-risk perspective. "
+            f"It has a health score of {health_score} and no critical or high-severity findings."
+        )
+    else:
+        direct = (
+            "This project does not look fully ready for deployment yet from a scan perspective. "
+            "There are still risk signals that should be reviewed before release."
+        )
+
+    actions = [
+        "Review any architecture smells or structural warnings before release.",
+        "Confirm there are no unresolved deployment blockers outside this scan, such as environment, infra, or test coverage gaps.",
+        "Rerun the scan after the next cleanup pass to verify the risk picture stays stable.",
+    ]
+
+    why = [str(item) for item in _safe_list(retrieval.get("evidence"))[:4]]
+
+    return (
+        f"{direct}\n\n"
+        f"What to do next:\n"
+        f"{chr(10).join(_bullet_lines(actions, limit=4))}\n\n"
+        f"Why I’m saying this:\n"
+        f"{chr(10).join(_bullet_lines(why, limit=4))}"
+    )
+
+
 def _deterministic_general_answer(result_json: dict[str, Any], retrieval: dict[str, Any]) -> str:
-    quick = _safe_dict(retrieval.get("quickFacts"))
+    quick = _quick_facts(retrieval)
     ai = _safe_dict(result_json.get("ai"))
 
-    summary = _first_non_empty(ai.get("summary"))
-    top_files = _safe_list(quick.get("topFiles"))
+    summary = _first_non_empty(ai.get("simpleSummary"), ai.get("summary"))
+    top_files = _safe_list(quick.get("topRefactorTargets") or quick.get("topFiles"))
 
     direct = (
-        "This scan suggests the repository has a few clear improvement areas, and the best next step is to work from the current risk and refactor priorities rather than guessing."
+        "Based on this scan, the repository does not show urgent failures, but it does show a few areas worth reviewing next. "
+        "The safest approach is to follow the scan’s current risk, architecture, and refactor signals instead of changing things blindly."
     )
 
     actions = []
@@ -263,7 +308,12 @@ def _deterministic_general_answer(result_json: dict[str, Any], retrieval: dict[s
 
 
 def _generate_deterministic_chat_answer(result_json: dict, retrieval: dict[str, Any]) -> str:
-    if not bool(retrieval.get("is_supported")):
+    is_supported = (
+        bool(retrieval.get("is_supported"))
+        or str(retrieval.get("status") or "").strip().lower() == "supported"
+    )
+
+    if not is_supported:
         return _repo_only_message()
 
     intent = str(retrieval.get("intent") or "general_repo")
@@ -272,12 +322,14 @@ def _generate_deterministic_chat_answer(result_json: dict, retrieval: dict[str, 
         return _deterministic_summary_answer(result_json, retrieval)
     if intent in {"risk", "security"}:
         return _deterministic_risk_answer(result_json, retrieval)
-    if intent == "refactor":
+    if intent in {"fix_priority", "quick_wins"}:
         return _deterministic_refactor_answer(result_json, retrieval)
     if intent == "architecture":
         return _deterministic_architecture_answer(retrieval)
     if intent == "files":
         return _deterministic_files_answer(retrieval)
+    if intent == "production_readiness":
+        return _deterministic_production_answer(result_json, retrieval)
 
     return _deterministic_general_answer(result_json, retrieval)
 

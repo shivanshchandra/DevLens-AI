@@ -46,19 +46,80 @@ UNSUPPORTED_PATTERNS = [
 ]
 
 INTENT_PATTERNS: list[tuple[str, list[str]]] = [
-    ("fix_priority", ["fix first", "what should i fix", "priority", "start with", "where should i start", "refactor first"]),
-    ("quick_wins", ["quick win", "quick wins", "under 1 hour", "under 1 hr", "small changes", "easy improvements"]),
+    (
+        "fix_priority",
+        [
+            "fix first",
+            "what should i fix",
+            "priority",
+            "start with",
+            "where should i start",
+            "refactor first",
+            "what should i do now",
+            "what do i do now",
+            "what should i do next",
+            "what next",
+            "next step",
+            "where do i begin",
+            "where should i begin",
+        ],
+    ),
+    (
+        "quick_wins",
+        [
+            "quick win",
+            "quick wins",
+            "under 1 hour",
+            "under 1 hr",
+            "small changes",
+            "easy improvements",
+            "quickly improve",
+            "improve quickly",
+            "easy cleanup",
+        ],
+    ),
     ("risk", ["risky", "risk", "danger", "unsafe", "problematic", "fragile"]),
     ("security", ["security", "vulnerability", "vulnerabilities", "secret", "secrets", "token leak", "insecure"]),
     ("architecture", ["architecture", "coupling", "boundary", "dependency hub", "layering", "structure", "module design"]),
     ("complexity", ["complexity", "complex", "hotspot", "hotspots", "maintainability hotspot"]),
     ("technical_debt", ["technical debt", "debt", "cleanup burden", "maintenance pain"]),
-    ("production_readiness", ["production", "deploy", "deployment", "release", "launch", "ship", "go live", "ready for prod"]),
+    (
+        "production_readiness",
+        [
+            "production",
+            "deploy",
+            "deployment",
+            "release",
+            "launch",
+            "ship",
+            "go live",
+            "ready for prod",
+            "can i deploy",
+            "can i deploy now",
+            "is it safe to deploy",
+            "can i launch",
+            "can i ship now",
+            "ready for production",
+        ],
+    ),
     ("files", ["which files", "where is", "file", "files", "auth", "login", "jwt", "token", "configuration"]),
     ("quality", ["quality", "code quality", "standards", "cleanliness"]),
     ("maintainability", ["maintainability", "maintainable", "hard to maintain", "maintenance"]),
     ("testing", ["test", "tests", "testing", "coverage"]),
-    ("summary", ["summary", "summarize", "overview", "plain language", "explain this scan", "simple summary"]),
+    (
+        "summary",
+        [
+            "summary",
+            "summarize",
+            "overview",
+            "plain language",
+            "explain this scan",
+            "simple summary",
+            "tell me about this repo",
+            "what is going on here",
+            "how does this repo look",
+        ],
+    ),
 ]
 
 
@@ -76,8 +137,8 @@ KEYWORD_SECTION_MAP = {
     "fix": ["top_files_to_fix", "fix_suggestions", "ai.refactorPlan", "findings"],
     "files": ["top_files_to_fix", "findings", "fix_suggestions", "architecture.couplingHotspots"],
     "start": ["top_files_to_fix", "fix_suggestions", "ai.refactorPlan"],
-    "summary": ["ai.summary", "ml.summary", "architecture.summary"],
-    "overview": ["ai.summary", "ml.summary", "architecture.summary"],
+    "summary": ["ai.summary", "ai.simpleSummary", "ml.summary", "architecture.summary"],
+    "overview": ["ai.summary", "ai.simpleSummary", "ml.summary", "architecture.summary"],
     "debt": ["ml.summary", "ai.riskExplanation", "top_files_to_fix"],
     "quality": ["findings", "top_files_to_fix", "ml.summary"],
     "auth": ["findings", "top_files_to_fix", "fix_suggestions"],
@@ -170,6 +231,18 @@ def _classify_question(question: str) -> tuple[str, str]:
 
     if _contains_any(q, repo_words):
         return "general_repo", "supported"
+
+    vague_repo_like = [
+        "what should i do now",
+        "what now",
+        "what next",
+        "next step",
+        "where to start",
+        "where should i begin",
+    ]
+
+    if q in vague_repo_like:
+        return "fix_priority", "supported"
 
     return "unsupported", "This chat can answer questions about the scanned repository, app, codebase, and GitHub project only."
 
@@ -266,6 +339,7 @@ def _repo_overview(result_json: dict[str, Any]) -> dict[str, Any]:
         "predictedDebtLevel": _safe_str(ml_summary.get("predictedDebtLevel"), "unknown"),
         "topRefactorTargets": _pick_top_paths(top_files, limit=5),
         "summary": _safe_str(ai.get("summary")),
+        "simpleSummary": _safe_str(ai.get("simpleSummary")),
     }
 
 
@@ -278,21 +352,22 @@ def _score_sections(question: str) -> list[str]:
             section_scores[section] = section_scores.get(section, 0) + 3
 
     q = question.lower()
-    if "what should i fix" in q or "fix first" in q:
-        for section in ["top_files_to_fix", "fix_suggestions", "risk_summary", "findings"]:
+    if "what should i fix" in q or "fix first" in q or "what should i do now" in q:
+        for section in ["top_files_to_fix", "fix_suggestions", "risk_summary", "findings", "ai.refactorPlan"]:
             section_scores[section] = section_scores.get(section, 0) + 4
 
     if "quick win" in q or "under 1 hour" in q:
         for section in ["fix_suggestions", "top_files_to_fix", "findings"]:
             section_scores[section] = section_scores.get(section, 0) + 4
 
-    if "production" in q or "deploy" in q or "launch" in q:
+    if "production" in q or "deploy" in q or "launch" in q or "ship" in q:
         for section in ["risk_summary", "fix_suggestions", "top_files_to_fix", "architecture.summary"]:
             section_scores[section] = section_scores.get(section, 0) + 4
 
     if not section_scores:
         section_scores = {
             "ai.summary": 1,
+            "ai.simpleSummary": 1,
             "ai.riskExplanation": 1,
             "top_files_to_fix": 1,
             "fix_suggestions": 1,
@@ -342,6 +417,16 @@ def _collect_evidence(result_json: dict[str, Any], matched_sections: list[str]) 
             label="AI Summary",
             section="ai.summary",
             reason="matched scan summary",
+        )
+
+    if "ai.simpleSummary" in matched_sections and ai.get("simpleSummary"):
+        evidence.append(_safe_str(ai.get("simpleSummary")))
+        _append_citation(
+            citations,
+            citation_type="section",
+            label="AI Simple Summary",
+            section="ai.simpleSummary",
+            reason="matched beginner-friendly summary",
         )
 
     if "ai.riskExplanation" in matched_sections:
@@ -529,10 +614,10 @@ def _collect_evidence(result_json: dict[str, Any], matched_sections: list[str]) 
             recommended_action = _safe_str(item.get("recommendedAction") or item.get("action"))
             priority = _safe_str(item.get("priority") or item.get("severity"))
             evidence.append(
-                f"{title}" +
-                (f" in {file_path}" if file_path else "") +
-                (f": {recommended_action}" if recommended_action else "") +
-                (f" [{priority}]" if priority else "")
+                f"{title}"
+                + (f" in {file_path}" if file_path else "")
+                + (f": {recommended_action}" if recommended_action else "")
+                + (f" [{priority}]" if priority else "")
             )
             _append_citation(
                 citations,
@@ -657,6 +742,7 @@ def retrieve_chat_context(result_json: dict, question: str) -> dict:
         "scopeNote": scope_note,
         "matchedSections": matched_sections,
         "overview": overview,
+        "quickFacts": overview,
         "evidence": evidence,
         "citations": citations,
         "confidence": confidence,
