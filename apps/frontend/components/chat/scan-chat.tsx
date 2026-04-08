@@ -11,9 +11,12 @@ import { Separator } from "@/components/ui/separator"
 import { toast } from "@/hooks/use-toast"
 
 const SUGGESTED_QUESTIONS = [
+  "What should I fix first?",
   "Why is this repo risky?",
-  "Which files should I fix first?",
+  "Which files are riskiest?",
   "What are the biggest architecture problems?",
+  "What can I improve in under 1 hour?",
+  "Is this repo ready for production?",
   "Summarize this scan simply",
   "Where should I start refactoring?",
 ]
@@ -29,15 +32,26 @@ function confidenceVariant(confidence: string) {
   }
 }
 
+function splitAnswer(answer: string) {
+  return answer
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
 export function ScanChat({ scanId }: { scanId: string }) {
   const [question, setQuestion] = useState("")
   const [answer, setAnswer] = useState<ScanChatResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showDeepDive, setShowDeepDive] = useState(false)
 
   const trimmedQuestion = question.trim()
 
   const canAsk = useMemo(() => trimmedQuestion.length >= 2 && !loading, [trimmedQuestion, loading])
+  const answerBlocks = useMemo(() => splitAnswer(answer?.answer ?? ""), [answer])
+  const visibleBlocks = showDeepDive ? answerBlocks : answerBlocks.slice(0, 2)
+  const hasDeepDive = answerBlocks.length > 2
 
   async function askChat(nextQuestion?: string) {
     const finalQuestion = (nextQuestion ?? question).trim()
@@ -45,6 +59,7 @@ export function ScanChat({ scanId }: { scanId: string }) {
 
     setLoading(true)
     setError(null)
+    setShowDeepDive(false)
 
     try {
       const res = await chatWithScan(scanId, { question: finalQuestion })
@@ -70,19 +85,24 @@ export function ScanChat({ scanId }: { scanId: string }) {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="space-y-2">
-          <CardTitle>AI Chat</CardTitle>
+        <CardHeader className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>AI Chat</CardTitle>
+            <Badge variant="outline">Repo-focused assistant</Badge>
+          </div>
+
           <p className="text-sm text-muted-foreground">
-            Ask grounded questions about this scan. Answers are based on scan findings, architecture,
-            ML, and refactor targets.
+            Ask about this repository, project, scan results, architecture, security, technical debt,
+            refactor priorities, or production readiness.
           </p>
         </CardHeader>
+
         <CardContent className="space-y-4">
           <form onSubmit={handleSubmit} className="flex flex-col gap-3 md:flex-row">
             <Input
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ask something like: Why is this repo risky?"
+              placeholder="Ask something like: What should I fix first?"
               className="md:flex-1"
             />
             <Button type="submit" disabled={!canAsk}>
@@ -108,6 +128,11 @@ export function ScanChat({ scanId }: { scanId: string }) {
             ))}
           </div>
 
+          <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">
+            This assistant is designed for questions about the scanned repo or project. For unrelated
+            questions, it will guide the user back to repository-focused prompts.
+          </div>
+
           {error ? (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
               {error}
@@ -124,9 +149,29 @@ export function ScanChat({ scanId }: { scanId: string }) {
               Confidence: {answer.confidence}
             </Badge>
           </CardHeader>
+
           <CardContent className="space-y-5">
             <div className="rounded-xl border bg-muted/30 p-4">
-              <p className="text-sm leading-6">{answer.answer}</p>
+              <div className="space-y-3">
+                {visibleBlocks.map((block, index) => (
+                  <p key={index} className="whitespace-pre-wrap text-sm leading-6">
+                    {block}
+                  </p>
+                ))}
+              </div>
+
+              {hasDeepDive ? (
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowDeepDive((prev) => !prev)}
+                  >
+                    {showDeepDive ? "Hide deep dive" : "Show deep dive"}
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             <Separator />
@@ -141,7 +186,9 @@ export function ScanChat({ scanId }: { scanId: string }) {
                     </Badge>
                   ))
                 ) : (
-                  <span className="text-sm text-muted-foreground">No matched sections returned.</span>
+                  <span className="text-sm text-muted-foreground">
+                    No matched sections returned.
+                  </span>
                 )}
               </div>
             </div>
@@ -154,11 +201,11 @@ export function ScanChat({ scanId }: { scanId: string }) {
                     <div key={`${citation.label}-${index}`} className="rounded-xl border p-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="secondary">{citation.type}</Badge>
-                        <span className="font-medium">{citation.label}</span>
+                        <span className="font-medium break-all">{citation.label}</span>
                       </div>
 
                       <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                        {citation.filePath ? <p>File: {citation.filePath}</p> : null}
+                        {citation.filePath ? <p className="break-all">File: {citation.filePath}</p> : null}
                         {citation.section ? <p>Section: {citation.section}</p> : null}
                         {citation.reason ? <p>Reason: {citation.reason}</p> : null}
                       </div>
@@ -166,7 +213,9 @@ export function ScanChat({ scanId }: { scanId: string }) {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No citations returned for this answer.</p>
+                <p className="text-sm text-muted-foreground">
+                  No citations returned for this answer.
+                </p>
               )}
             </div>
           </CardContent>
