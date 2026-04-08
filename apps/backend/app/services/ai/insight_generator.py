@@ -171,8 +171,10 @@ def _build_simple_summary(
 ) -> str:
     if total_findings == 0 and architecture_smells_count == 0 and (arch_level or "low") == "low":
         return (
-            f"This repository looks healthy right now. It scored {int(round(health_score))} "
-            f"with grade {grade}, and the scan did not find major issues."
+            f"This repository currently looks healthy overall. It has a health score of {int(round(health_score))} "
+            f"with grade {grade}, and the scan did not detect major code issues. "
+            f"From a first-pass review, the codebase appears stable enough for normal development work, "
+            f"although it is still worth checking the top recommendations before making larger architectural changes."
         )
 
     parts: list[str] = [
@@ -181,23 +183,31 @@ def _build_simple_summary(
 
     if total_findings > 0:
         parts.append(
-            f"The scan found {total_findings} issues, including {critical_count} critical and {high_count} high-severity findings."
+            f"The scan found {total_findings} total issues, including {critical_count} critical and {high_count} high-severity findings."
         )
     else:
-        parts.append("The scan did not find major code issues, but there are still some structural signals worth reviewing.")
+        parts.append(
+            "The scan did not find major code issues, but there are still structural signals that deserve review."
+        )
 
     if architecture_smells_count > 0:
         parts.append(
-            f"Architecture analysis also found {architecture_smells_count} structural smell indicators."
+            f"Architecture analysis identified {architecture_smells_count} structural smell indicators, which suggests that some module boundaries or ownership lines may need cleanup."
         )
 
     if arch_level:
-        parts.append(f"Overall architecture risk is currently {arch_level}.")
+        parts.append(
+            f"Overall architecture risk is currently {arch_level}."
+        )
 
     if ml_risk_level:
-        parts.append(f"ML signals estimate delivery risk as {ml_risk_level}.")
+        parts.append(
+            f"ML-based signals also estimate delivery risk as {ml_risk_level}, which helps confirm the broader scan picture."
+        )
 
-    parts.append("A good next step is to review the top refactor targets and architecture recommendations before making broader changes.")
+    parts.append(
+        "A practical next step is to review the top refactor targets, look at architecture recommendations, and then rerun the scan after the first cleanup pass."
+    )
 
     return " ".join(parts)
 
@@ -351,6 +361,9 @@ def _maybe_rewrite_with_llm(
     result: dict[str, Any],
     insights: dict[str, Any],
 ) -> dict[str, Any]:
+    insights["llmEnhanced"] = False
+    insights["summarySource"] = "fallback"
+
     try:
         prompt = build_scan_rewrite_prompt(
             result_json=result,
@@ -359,8 +372,13 @@ def _maybe_rewrite_with_llm(
         raw_text = generate_text_with_llm(
             prompt=prompt,
             system_instruction=(
-                "You rewrite repository scan insights for a beginner-friendly developer product. "
-                "Return only valid JSON."
+                "You are rewriting repository scan insights for a premium developer dashboard. "
+                "You must stay fully grounded in the provided scan result and deterministic insights. "
+                "Do not invent facts. Do not add unsupported risks. "
+                "Write for a beginner or intermediate developer in clear, natural product language. "
+                "Make the summary feel fuller, more explanatory, and more useful than a short caption. "
+                "The summary should read like a polished dashboard analysis, not a tiny AI sentence. "
+                "Return only valid JSON with keys: summary, risk_narrative, risk_bullets, refactor_steps."
             ),
         )
         parsed = json.loads(raw_text)
@@ -377,18 +395,23 @@ def _maybe_rewrite_with_llm(
         if risk_narrative:
             risk_explanation["narrative"] = risk_narrative
         if isinstance(risk_bullets, list) and risk_bullets:
-            cleaned_bullets = [str(item) for item in risk_bullets[:5]]
+            cleaned_bullets = [str(item).strip() for item in risk_bullets[:5] if str(item).strip()]
             risk_explanation["bullets"] = cleaned_bullets
             insights["simpleHighlights"] = cleaned_bullets[:3]
         insights["riskExplanation"] = risk_explanation
 
         refactor_plan = _safe_dict(insights.get("refactorPlan"))
         if isinstance(refactor_steps, list) and refactor_steps:
-            refactor_plan["steps"] = [str(item) for item in refactor_steps[:6]]
+            refactor_plan["steps"] = [str(item).strip() for item in refactor_steps[:6] if str(item).strip()]
         insights["refactorPlan"] = refactor_plan
+
+        insights["llmEnhanced"] = True
+        insights["summarySource"] = "llm"
 
         return insights
     except (LlmUnavailableError, json.JSONDecodeError, TypeError, ValueError):
+        insights["llmEnhanced"] = False
+        insights["summarySource"] = "fallback"
         return insights
 
 
@@ -480,6 +503,8 @@ def generate_ai_insights(result: dict[str, Any]) -> dict[str, Any]:
         "simpleHighlights": risk_explanation.get("bullets", [])[:3],
         "riskExplanation": risk_explanation,
         "refactorPlan": refactor_plan,
+        "llmEnhanced": False,
+        "summarySource": "fallback",
         "grounding": {
             "healthScore": health_score,
             "grade": grade,

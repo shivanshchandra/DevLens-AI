@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useRef, useEffect } from "react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -10,7 +9,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
 
 import { ScanChat } from "@/components/chat/scan-chat"
-import { AiSummaryCard } from "@/components/dashboard/ai-summary-card"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { EmptyStateCard } from "@/components/dashboard/empty-state-card"
 import { FindingsTable } from "@/components/dashboard/findings-table"
@@ -76,21 +74,13 @@ type AiRefactorPlan = {
 
 type AiInsightsNormalized = {
   summary?: string
+  simpleSummary?: string
+  simpleHighlights?: string[]
+  llmEnhanced?: boolean
+  summarySource?: string
   riskExplanation?: AiRiskExplanation
   refactorPlan?: AiRefactorPlan
-  grounding?: {
-    healthScore?: number
-    grade?: string
-    totalFindings?: number
-    criticalCount?: number
-    highCount?: number
-    architectureRiskLevel?: string | null
-    couplingHotspots?: number
-    dependencyHubs?: number
-    predictedRiskLevel?: string | null
-    predictedDebtLevel?: string | null
-    topRefactorTargets?: string[]
-  }
+  grounding?: any
 }
 
 type NormalizedFixSuggestion = {
@@ -362,6 +352,10 @@ function normalizeMl(results: Results) {
 function normalizeAi(results: Results): AiInsightsNormalized {
   return {
     summary: results.ai?.summary,
+    simpleSummary: results.ai?.simpleSummary,
+    simpleHighlights: results.ai?.simpleHighlights ?? [],
+    llmEnhanced: results.ai?.llmEnhanced,
+    summarySource: results.ai?.summarySource,
     riskExplanation: results.ai?.riskExplanation,
     refactorPlan: results.ai?.refactorPlan,
     grounding: results.ai?.grounding,
@@ -895,7 +889,7 @@ export function ReportView({
     ]
   )
 
-  const simpleWhyItMatters = useMemo(
+    const simpleWhyItMatters = useMemo(
     () =>
       buildSimpleWhyItMatters({
         topRiskItems,
@@ -904,7 +898,26 @@ export function ReportView({
     [topRiskItems, recommendedActionItems]
   )
 
+  const llmSummaryActive =
+    ai.llmEnhanced === true || ai.summarySource === "llm"
+
+  const resolvedSummaryText = llmSummaryActive
+    ? ai.simpleSummary?.trim() || ai.summary?.trim() || quickVerdict
+    : quickVerdict
+
+  const resolvedWhyText = llmSummaryActive
+    ? ai.riskExplanation?.narrative?.trim() || simpleWhyItMatters
+    : simpleWhyItMatters
+
+  const resolvedHighlights = llmSummaryActive
+    ? uniqueNonEmpty([
+        ...(ai.simpleHighlights ?? []),
+        ...(ai.riskExplanation?.bullets ?? []),
+      ]).slice(0, 3)
+    : []
+
   const topPriorityItems = recommendedActionItems.slice(0, 3)
+
 
   const architectureSummaryItems = [
     {
@@ -1131,32 +1144,44 @@ export function ReportView({
       </div>
 
             <div className="space-y-4">
-        <SectionHeader
-          title="Simple Summary"
-          description="A simpler first-pass explanation of what matters most in this scan."
+                <SectionHeader
+          title="Summary"
+          description={
+            llmSummaryActive
+              ? "A simplified, explainable overview generated from the real scan result."
+              : "A simpler first-pass explanation of what matters most in this scan."
+          }
         />
 
         <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
           <Card className="rounded-[28px] border-white/10 bg-[linear-gradient(180deg,rgba(59,130,246,0.08),rgba(255,255,255,0.02))]">
-            <CardContent className="space-y-5 p-6 md:p-7">
+                        <CardContent className="space-y-5 p-6 md:p-7">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-zinc-200">Quick Verdict</div>
+                  <div className="text-sm font-medium text-zinc-200">
+                    {llmSummaryActive ? "AI Summary" : "Quick Verdict"}
+                  </div>
                   <div className="text-sm text-zinc-400">
-                    Start here for the simplest plain-English summary.
+                    {llmSummaryActive
+                      ? "A clearer, more detailed explanation generated from the real scan result."
+                      : "Start here for the simplest plain-English summary."}
                   </div>
                 </div>
 
-                <StatusPill
-                  label={shortLevel(ai.riskExplanation?.level ?? riskPrediction?.level ?? results.grade)}
-                  tone={riskAccentFromLevel(
-                    ai.riskExplanation?.level ?? riskPrediction?.level ?? results.grade
-                  )}
-                />
+                {!llmSummaryActive ? (
+                  <StatusPill
+                    label={shortLevel(
+                      ai.riskExplanation?.level ?? riskPrediction?.level ?? results.grade
+                    )}
+                    tone={riskAccentFromLevel(
+                      ai.riskExplanation?.level ?? riskPrediction?.level ?? results.grade
+                    )}
+                  />
+                ) : null}
               </div>
 
               <p className="text-sm leading-7 text-zinc-200 md:text-[15px]">
-                {quickVerdict}
+                {resolvedSummaryText}
               </p>
 
               <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
@@ -1164,21 +1189,22 @@ export function ReportView({
                   Why this matters
                 </div>
                 <p className="mt-2 text-sm leading-6 text-zinc-300">
-                  {simpleWhyItMatters}
+                  {resolvedWhyText}
                 </p>
               </div>
 
-              {ai.summary ? (
-                <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
-                  <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">
-                    AI short summary
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-zinc-300">
-                    {ai.summary}
-                  </p>
+              {llmSummaryActive && resolvedHighlights.length ? (
+                <div className="grid gap-3 md:grid-cols-3">
+                  {resolvedHighlights.map((item, index) => (
+                    <div
+                      key={`${item}-${index}`}
+                      className="rounded-[20px] border border-white/10 bg-black/20 p-4 text-sm text-zinc-300"
+                    >
+                      {item}
+                    </div>
+                  ))}
                 </div>
               ) : null}
-
             </CardContent>
           </Card>
 

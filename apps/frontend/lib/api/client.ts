@@ -237,6 +237,10 @@ export type AiRefactorPlan = {
 export type AiInsights = {
   version?: string
   summary?: string
+  simpleSummary?: string
+  simpleHighlights?: string[]
+  llmEnhanced?: boolean
+  summarySource?: "llm" | "fallback" | string
   riskExplanation?: AiRiskExplanation
   refactorPlan?: AiRefactorPlan
   grounding?: {
