@@ -903,11 +903,11 @@ export function ReportView({
 
   const resolvedSummaryText = llmSummaryActive
     ? ai.simpleSummary?.trim() || ai.summary?.trim() || quickVerdict
-    : quickVerdict
+    : ai.simpleSummary?.trim() || ai.summary?.trim() || quickVerdict
 
   const resolvedWhyText = llmSummaryActive
     ? ai.riskExplanation?.narrative?.trim() || simpleWhyItMatters
-    : simpleWhyItMatters
+    : ai.riskExplanation?.narrative?.trim() || simpleWhyItMatters
 
   const resolvedHighlights = llmSummaryActive
     ? uniqueNonEmpty([
@@ -1240,6 +1240,20 @@ export function ReportView({
           </Card>
         </div>
 
+        <div className="space-y-4">
+        <SectionHeader
+          title="Ask DevLens AI"
+          description="Ask questions about this scan, architecture, risks, fixes, or deployment readiness."
+        />
+
+        <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
+          <CardContent className="p-4 md:p-6">
+            <ScanChat scanId={scanId} />
+          </CardContent>
+        </Card>
+      </div>
+      
+
         <div className="grid gap-4 xl:grid-cols-2">
           <TopRisksCard
             title="Top Risks"
@@ -1258,7 +1272,7 @@ export function ReportView({
       <Separator />
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 gap-2 rounded-[22px] border border-white/10 bg-white/[0.03] p-2 md:grid-cols-4 xl:grid-cols-7">
+        <TabsList className="grid w-full grid-cols-2 gap-2 rounded-[22px] border border-white/10 bg-white/[0.03] p-2 md:grid-cols-4 xl:grid-cols-6">
           <TabsTrigger
             value="overview"
             className="rounded-[16px] data-[state=active]:bg-white data-[state=active]:text-black"
@@ -1294,12 +1308,6 @@ export function ReportView({
             className="rounded-[16px] data-[state=active]:bg-white data-[state=active]:text-black"
           >
             Fixes
-          </TabsTrigger>
-          <TabsTrigger
-            value="chat"
-            className="rounded-[16px] data-[state=active]:bg-white data-[state=active]:text-black"
-          >
-            AI Chat
           </TabsTrigger>
         </TabsList>
 
@@ -1545,18 +1553,6 @@ export function ReportView({
           </TabSectionShell>
         </TabsContent>
 
-        <TabsContent value="chat" className="mt-6">
-          <TabSectionShell
-            title="AI Chat"
-            description="Ask questions about this scan, findings, and generated recommendations."
-          >
-            <Card className="rounded-[24px] border-white/10 bg-white/[0.03]">
-              <CardContent className="p-4 md:p-6">
-                <ScanChat scanId={scanId} />
-              </CardContent>
-            </Card>
-          </TabSectionShell>
-        </TabsContent>
       </Tabs>
 
       <div className="flex justify-center pt-2">

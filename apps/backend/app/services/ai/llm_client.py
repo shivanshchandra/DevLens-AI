@@ -48,7 +48,7 @@ def generate_text_with_llm(
     prompt: str,
     system_instruction: str | None = None,
     temperature: float = 0.3,
-    max_output_tokens: int = 700,
+    max_output_tokens: int = 1200,
 ) -> str:
     if not llm_enabled():
         raise LlmUnavailableError("LLM is disabled")
@@ -65,13 +65,20 @@ def generate_text_with_llm(
         final_prompt = f"{system_instruction.strip()}\n\n{prompt.strip()}"
 
     try:
+        from google.genai import types as genai_types
         response = client.models.generate_content(
             model=model,
             contents=final_prompt,
+            config=genai_types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+            ),
         )
         text = getattr(response, "text", None)
         if isinstance(text, str) and text.strip():
             return text.strip()
         raise LlmUnavailableError("LLM returned empty text")
+    except LlmUnavailableError:
+        raise
     except Exception as exc:
         raise LlmUnavailableError(str(exc)) from exc

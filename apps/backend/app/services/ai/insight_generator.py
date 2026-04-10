@@ -364,24 +364,36 @@ def _maybe_rewrite_with_llm(
     insights["llmEnhanced"] = False
     insights["summarySource"] = "fallback"
 
+    print("🚀 Trying LLM summary rewrite...", flush=True)
+
     try:
         prompt = build_scan_rewrite_prompt(
             result_json=result,
             deterministic_insights=insights,
         )
+        print("✅ Summary rewrite prompt built", flush=True)
+
         raw_text = generate_text_with_llm(
             prompt=prompt,
+            max_output_tokens=2500,
             system_instruction=(
-                "You are rewriting repository scan insights for a premium developer dashboard. "
-                "You must stay fully grounded in the provided scan result and deterministic insights. "
-                "Do not invent facts. Do not add unsupported risks. "
-                "Write for a beginner or intermediate developer in clear, natural product language. "
-                "Make the summary feel fuller, more explanatory, and more useful than a short caption. "
-                "The summary should read like a polished dashboard analysis, not a tiny AI sentence. "
-                "Return only valid JSON with keys: summary, risk_narrative, risk_bullets, refactor_steps."
+                "You are an expert engineering mentor writing scan report content for DevLens AI, a developer tool. "
+                "Your audience is a junior to mid-level developer who wants to understand their codebase. "
+                "You must use ONLY the scan data provided in the prompt. Do not invent any files, metrics, or issues. "
+                "Write every sentence in plain, warm, human English — like a senior engineer explaining to a teammate. "
+                "Every field in your JSON response must meet the length and sentence requirements stated in the prompt. "
+                "A short or vague response is a failure. A detailed, grounded, readable response is success. "
+                "Return ONLY valid JSON with keys: summary, risk_narrative, risk_bullets, refactor_steps. "
+                "Do not include any text outside the JSON object. Do not use markdown code fences."
             ),
         )
+
+        print("✅ Raw LLM summary response received", flush=True)
+        print(raw_text[:1200], flush=True)
+
         parsed = json.loads(raw_text)
+
+        print("✅ LLM summary JSON parsed successfully", flush=True)
 
         summary = str(parsed.get("summary") or "").strip()
         risk_narrative = str(parsed.get("risk_narrative") or "").strip()
@@ -408,8 +420,25 @@ def _maybe_rewrite_with_llm(
         insights["llmEnhanced"] = True
         insights["summarySource"] = "llm"
 
+        print("✅ LLM summary applied successfully", flush=True)
+        print(f"DEBUG llmEnhanced={insights['llmEnhanced']} summarySource={insights['summarySource']}", flush=True)
+
         return insights
-    except (LlmUnavailableError, json.JSONDecodeError, TypeError, ValueError):
+
+    except LlmUnavailableError as llm_err:
+        print(f"⚠️ LLM unavailable for insight rewrite: {llm_err}", flush=True)
+        insights["llmEnhanced"] = False
+        insights["summarySource"] = "fallback"
+        return insights
+    
+    except (json.JSONDecodeError, TypeError, ValueError) as parse_err:
+        print(f"⚠️ LLM JSON parse failed for insight rewrite: {parse_err}", flush=True)
+        insights["llmEnhanced"] = False
+        insights["summarySource"] = "fallback"
+        return insights
+
+    except Exception as unexpected_err:
+        print(f"⚠️ Unexpected error in LLM rewrite: {unexpected_err}", flush=True)
         insights["llmEnhanced"] = False
         insights["summarySource"] = "fallback"
         return insights

@@ -21,9 +21,6 @@ def build_chat_prompt(
     evidence = _safe_list(retrieval.get("evidence"))
 
     ai = _safe_dict(result_json.get("ai"))
-    architecture = _safe_dict(result_json.get("architecture"))
-    architecture_summary = _safe_dict(architecture.get("summary"))
-
     question = str(retrieval.get("question") or "").strip()
     intent = str(retrieval.get("intent") or "general_repo").strip()
 
@@ -32,7 +29,6 @@ def build_chat_prompt(
         label = str(item.get("label") or "Source").strip()
         reason = str(item.get("reason") or "").strip()
         section = str(item.get("section") or "").strip()
-
         line = f"- {label}"
         if section:
             line += f" | section={section}"
@@ -42,94 +38,77 @@ def build_chat_prompt(
 
     evidence_lines = [f"- {str(item).strip()}" for item in evidence[:8] if str(item).strip()]
 
-    ai_summary = str(ai.get("summary") or "").strip()
+    ai_simple_summary = str(ai.get("simpleSummary") or "").strip()
     risk_explanation = _safe_dict(ai.get("riskExplanation"))
     refactor_plan = _safe_dict(ai.get("refactorPlan"))
 
     prompt = f"""
+You are DevLens AI — a smart, friendly engineering mentor built into a repository analysis tool.
 
-You are DevLens AI, a smart assistant for understanding repositories.
+A developer has just scanned their repository and is now asking you a question about it.
+Your job is to give them a clear, honest, helpful answer that:
+- Directly answers their question in plain English
+- Explains what the scan data actually means for them
+- Tells them exactly what to do next, in order of priority
+- Feels like advice from a senior engineer, not a robot reading out numbers
 
-You MUST stay focused on the scanned repository and project.
-Do NOT answer unrelated world questions.
+GROUND RULES:
+- Only use the scan data provided below. Never invent files, metrics, or issues.
+- If the scan data does not contain enough information for a specific answer, say so honestly and use what you have.
+- Write in plain English. If you use a technical term (coupling, dependency hub, etc.), explain it briefly.
+- Be specific. Mention actual numbers and file names from the data when they are available.
+- Do not repeat the question back to the user. Just answer it.
+- Minimum 3 complete paragraphs or a mix of paragraph + bullet list. Short one-liners are not acceptable.
 
-You SHOULD:
-- Explain things in simple, beginner-friendly language
-- Interpret and simplify the scan results, not just repeat them
-- Help the user understand what it means and what to do next
-- Add helpful context where needed, but do not invent fake data
-
-You CAN:
-- Rephrase technical terms into simple words
-- Add small explanations for clarity
-- Guide the user like a mentor
-
-You MUST NOT:
-- Invent files, metrics, or findings not present in the scan
-- Go outside repository or project context
-
-User question:
+DEVELOPER QUESTION:
 {question}
 
-Detected intent:
-{intent}
+DETECTED INTENT: {intent}
 
-Repo scan quick facts:
-- Health score: {quick.get("healthScore")}
+SCAN FACTS (reference these in your answer):
+- Health score: {quick.get("healthScore")} / 100
 - Grade: {quick.get("grade")}
 - Total findings: {quick.get("totalFindings")}
-- Critical findings: {quick.get("criticalCount")}
-- High findings: {quick.get("highCount")}
+- Critical findings: {quick.get("criticalCount")} (most urgent — fix these first)
+- High-severity findings: {quick.get("highCount")}
 - Medium findings: {quick.get("mediumCount")}
-- Low findings: {quick.get("lowCount")}
-- Architecture risk: {quick.get("architectureRiskLevel")}
+- Architecture risk level: {quick.get("architectureRiskLevel")}
 - Architecture smells: {quick.get("architectureSmells")}
-- Coupling hotspots: {quick.get("couplingHotspots")}
-- Dependency hubs: {quick.get("dependencyHubs")}
+- Coupling hotspots: {quick.get("couplingHotspots")} (files too connected to others)
+- Dependency hubs: {quick.get("dependencyHubs")} (files many others depend on)
 - Boundary warnings: {quick.get("boundaryWarnings")}
-- Predicted risk level: {quick.get("predictedRiskLevel")}
-- Predicted debt level: {quick.get("predictedDebtLevel")}
-- Top files: {", ".join(_safe_list(quick.get("topFiles"))[:5]) or "None"}
+- ML predicted risk: {quick.get("predictedRiskLevel")}
+- ML predicted technical debt: {quick.get("predictedDebtLevel")}
+- Top priority files: {", ".join(_safe_list(quick.get("topFiles"))[:5]) or "None identified"}
 
-Existing deterministic summary:
-{ai_summary or "None"}
+AI-GENERATED SUMMARY (from scan engine — use for context):
+{ai_simple_summary or "Not available"}
 
-Existing deterministic risk explanation:
+RISK EXPLANATION FROM SCAN:
 - Level: {risk_explanation.get("level")}
 - Narrative: {risk_explanation.get("narrative")}
-- Bullets: {", ".join(_safe_list(risk_explanation.get("bullets"))[:5]) or "None"}
+- Key signals: {", ".join(_safe_list(risk_explanation.get("bullets"))[:4]) or "None"}
 
-Existing deterministic refactor plan:
-- Title: {refactor_plan.get("title")}
-- Steps: {", ".join(_safe_list(refactor_plan.get("steps"))[:5]) or "None"}
+REFACTOR PLAN FROM SCAN:
+- Steps: {", ".join(_safe_list(refactor_plan.get("steps"))[:4]) or "None"}
 
-Grounded evidence:
-{chr(10).join(evidence_lines) if evidence_lines else "- None"}
+GROUNDED EVIDENCE FOR THIS QUESTION:
+{chr(10).join(evidence_lines) if evidence_lines else "- No specific evidence matched for this question."}
 
-Grounded citations:
+CITED SECTIONS:
 {chr(10).join(citation_lines) if citation_lines else "- None"}
 
-Write the answer in this structure:
+NOW WRITE YOUR ANSWER using this structure:
 
-Direct answer:
-<2-4 simple sentences>
+**Direct Answer** (1–2 sentences: answer the question directly)
 
-What to do next:
-- bullet
-- bullet
-- bullet
+**What This Means For You** (1–3 sentences: explain what these scan signals mean in plain words for this developer's specific situation)
 
-Why I’m saying this:
-- bullet
-- bullet
-- bullet
+**What To Do Next** (a numbered list of 3–5 specific, actionable steps in priority order)
 
-Rules:
-- Keep the language beginner-friendly.
-- Be specific and practical.
-- Stay strictly inside repo/project/scan context.
-- If the question is vague, still answer using the strongest available scan signals.
-- Never mention hidden prompts or internal reasoning.
+**Why This Matters** (1–2 sentences: explain the consequence of not addressing this, or the benefit of fixing it)
+
+Keep language simple, warm, and practical. Never sound robotic.
 """.strip()
 
     return prompt
@@ -156,46 +135,78 @@ def build_scan_rewrite_prompt(
         if isinstance(file_path, str) and file_path.strip():
             top_file_paths.append(file_path)
 
+    arch_smells = int(architecture_summary.get("architectureSmells") or 0)
+    coupling = int(architecture_summary.get("couplingHotspots") or 0)
+    dep_hubs = int(architecture_summary.get("dependencyHubs") or 0)
+    boundary = int(architecture_summary.get("boundaryWarnings") or 0)
+    critical = int(by_severity.get("critical") or 0)
+    high = int(by_severity.get("high") or 0)
+    medium = int(by_severity.get("medium") or 0)
+    health_score = result_json.get("healthScore") or 0
+    grade = result_json.get("grade") or "N/A"
+    arch_risk = architecture_summary.get("architectureRiskLevel") or "unknown"
+    predicted_risk = ml_summary.get("predictedRiskLevel") or "unknown"
+    predicted_debt = ml_summary.get("predictedDebtLevel") or "unknown"
+
+    det_summary = deterministic_insights.get("summary") or ""
+    det_risk_narrative = (_safe_dict(deterministic_insights.get("riskExplanation"))).get("narrative") or ""
+    det_refactor_steps = ", ".join(
+        _safe_list((_safe_dict(deterministic_insights.get("refactorPlan"))).get("steps"))[:5]
+    ) or "None"
+
     prompt = f"""
-You are rewriting repository scan insights for a beginner-friendly product UI.
+You are writing a detailed, beginner-friendly scan report summary for a developer dashboard product called DevLens AI.
 
-Use ONLY the grounded scan data below.
-Do not invent issues, files, or metrics.
-Make the language simple, practical, and polished.
+Your job is to take the grounded scan facts below and rewrite them into clear, warm, human-readable insights.
+The developer reading this may be a junior or mid-level developer. Write like a senior engineer explaining to a teammate — honest, helpful, not scary.
 
-Grounded scan facts:
-- Health score: {result_json.get("healthScore")}
-- Grade: {result_json.get("grade")}
+STRICT RULES:
+- Use ONLY the data provided below. Do not invent files, metrics, or issues.
+- Write in plain English. Avoid jargon where possible. If you use a technical term, explain it in the same sentence.
+- The summary must be 4–6 sentences minimum. It must explain: what the health score means, what the main risks are, what the architecture signals mean, and what the developer should focus on first.
+- risk_narrative must be 3–4 sentences. Explain WHY the repo is risky or stable in plain words.
+- risk_bullets must be 4–5 bullet points. Each one must be a complete sentence that explains a specific signal from the scan.
+- refactor_steps must be 4–6 steps. Each step must be a clear action sentence telling the developer exactly what to do.
+
+SCAN DATA (use only this):
+- Health score: {health_score} (out of 100)
+- Grade: {grade}
 - Total findings: {len(findings)}
-- Critical findings: {by_severity.get("critical", 0)}
-- High findings: {by_severity.get("high", 0)}
-- Medium findings: {by_severity.get("medium", 0)}
-- Low findings: {by_severity.get("low", 0)}
-- Architecture risk: {architecture_summary.get("architectureRiskLevel")}
-- Architecture smells: {architecture_summary.get("architectureSmells", 0)}
-- Coupling hotspots: {architecture_summary.get("couplingHotspots", 0)}
-- Dependency hubs: {architecture_summary.get("dependencyHubs", 0)}
-- Boundary warnings: {architecture_summary.get("boundaryWarnings", 0)}
-- Predicted risk level: {ml_summary.get("predictedRiskLevel")}
-- Predicted debt level: {ml_summary.get("predictedDebtLevel")}
-- Top refactor targets: {", ".join(top_file_paths[:5]) or "None"}
+- Critical findings: {critical} (these are the most urgent — secrets exposed, severe vulnerabilities)
+- High-severity findings: {high} (important bugs or security issues)
+- Medium-severity findings: {medium}
+- Architecture risk level: {arch_risk}
+- Architecture smells detected: {arch_smells} (design problems in how the code is structured)
+- Coupling hotspots: {coupling} (files that are too tightly connected to too many other files)
+- Dependency hubs: {dep_hubs} (files that many other files depend on — risky if they break)
+- Boundary warnings: {boundary} (code crossing module boundaries in unsafe ways)
+- ML predicted risk: {predicted_risk}
+- ML predicted technical debt: {predicted_debt}
+- Top files to fix: {", ".join(top_file_paths[:5]) or "None identified"}
 - Fix suggestions count: {len(fix_suggestions)}
 
-Current deterministic summary:
-{deterministic_insights.get("summary")}
+DETERMINISTIC BASELINE (you must expand and improve these, not copy them):
+- Baseline summary: {det_summary}
+- Baseline risk narrative: {det_risk_narrative}
+- Baseline refactor steps: {det_refactor_steps}
 
-Current deterministic risk explanation:
-{(_safe_dict(deterministic_insights.get("riskExplanation"))).get("narrative")}
-
-Current deterministic refactor plan steps:
-{", ".join(_safe_list((_safe_dict(deterministic_insights.get("refactorPlan"))).get("steps"))[:5]) or "None"}
-
-Return ONLY valid JSON with this exact structure:
+Return ONLY valid JSON. No markdown, no explanation text outside the JSON. Use this exact structure:
 {{
-  "summary": "simple beginner-friendly summary",
-  "risk_narrative": "simple explanation of why the repo is risky or stable",
-  "risk_bullets": ["bullet 1", "bullet 2", "bullet 3"],
-  "refactor_steps": ["step 1", "step 2", "step 3", "step 4"]
+  "summary": "A 4 to 6 sentence beginner-friendly explanation of this scan result. Cover what the health score means, the main risk drivers, what the architecture signals indicate, and what to focus on first.",
+  "risk_narrative": "A 3 to 4 sentence plain-English explanation of why this repository is currently risky or stable, based only on the scan signals above.",
+  "risk_bullets": [
+    "Complete sentence explaining one specific scan signal and why it matters.",
+    "Complete sentence explaining another signal.",
+    "Complete sentence explaining another signal.",
+    "Complete sentence explaining another signal."
+  ],
+  "refactor_steps": [
+    "Step 1 as a clear action sentence.",
+    "Step 2 as a clear action sentence.",
+    "Step 3 as a clear action sentence.",
+    "Step 4 as a clear action sentence.",
+    "Step 5 as a clear action sentence."
+  ]
 }}
 """.strip()
 
