@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -51,6 +52,13 @@ class Settings(BaseSettings):
     GIT_FETCH_TIMEOUT: int = 300
     GIT_CHECKOUT_TIMEOUT: int = 120
     GITHUB_API_TIMEOUT: int = 20
+
+    @field_validator("DATABASE_URL", "REDIS_URL", "GITHUB_TOKEN", mode="before")
+    @classmethod
+    def clean_strings(cls, v: str | None) -> str | None:
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
     model_config = SettingsConfigDict(
         env_file=_pick_env_file(),
