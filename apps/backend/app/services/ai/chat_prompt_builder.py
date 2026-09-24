@@ -66,6 +66,8 @@ DEVELOPER QUESTION:
 DETECTED INTENT: {intent}
 
 SCAN FACTS (reference these in your answer):
+- Programming Languages used: {quick.get("languages") or "Not detected"}
+- Total files profiled: {quick.get("totalFiles", 0)}
 - Health score: {quick.get("healthScore")} / 100
 - Grade: {quick.get("grade")}
 - Total findings: {quick.get("totalFindings")}

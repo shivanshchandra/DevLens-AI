@@ -57,27 +57,42 @@ export default function HomePage() {
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button size="xl" asChild>
+              <Button size="xl" asChild className="shadow-[0_0_30px_rgba(255,255,255,0.15)]">
                 <Link href="/analyze">
                   Analyze GitHub Repo
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
 
-              <Button variant="outline" size="xl" asChild>
-                <Link href="/history">View Scan History</Link>
+              <Button variant="outline" size="xl" asChild className="border-white/10 hover:bg-white/5">
+                <Link href="/dashboard/8ccd5f79-a0cf-4fcc-91a2-4b91b7cf5a85">
+                  <Sparkles className="h-4 w-4 text-emerald-400 mr-2" />
+                  Live Demo: NeetCode Repo
+                </Link>
+              </Button>
+
+              <Button variant="ghost" size="xl" asChild className="text-zinc-400 hover:text-white">
+                <Link href="/history">Scan History</Link>
               </Button>
             </div>
 
-            <div className="mt-8 flex flex-wrap gap-3 text-xs text-zinc-500">
-              <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">
+            <div className="mt-8 flex flex-wrap items-center gap-3 text-xs text-zinc-400">
+              <span className="font-semibold text-zinc-300">Quick Showcase:</span>
+              <Link
+                href="/dashboard/8ccd5f79-a0cf-4fcc-91a2-4b91b7cf5a85"
+                className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-emerald-300 hover:bg-emerald-500/20 transition-all flex items-center gap-1.5"
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                Inspect Sample Audit (NeetCode)
+              </Link>
+              <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-zinc-500">
                 Repo + PR + ZIP scanning
               </div>
-              <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">
-                ML + AI insights
+              <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-zinc-500">
+                AST & Secret Scanning
               </div>
-              <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">
-                Compare + Team analytics
+              <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-zinc-500">
+                AI Fix Patches
               </div>
             </div>
           </div>

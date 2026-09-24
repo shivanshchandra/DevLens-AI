@@ -24,6 +24,7 @@ import { StatHighlightCard } from "@/components/dashboard/stat-highlight-card"
 import { StatusPill } from "@/components/dashboard/status-pill"
 import { TabSectionShell } from "@/components/dashboard/tab-section-shell"
 import { TopRisksCard } from "@/components/dashboard/top-risks-card"
+import { ArchitectureGraphVisualizer } from "@/components/dashboard/architecture-graph"
 import type {
   Finding,
   FindingSeverity,
@@ -1341,7 +1342,7 @@ export function ReportView({
                 <CardTitle className="text-white">Top Findings</CardTitle>
               </CardHeader>
               <CardContent>
-                <FindingsTable findings={topFindings} />
+                <FindingsTable findings={topFindings} scanId={scanId} />
               </CardContent>
             </Card>
           </TabSectionShell>
@@ -1356,6 +1357,7 @@ export function ReportView({
               <CardContent className="p-6">
                 <FindingsTable
                   findings={normalizedFindings.filter((f) => f.type === "quality")}
+                  scanId={scanId}
                 />
               </CardContent>
             </Card>
@@ -1371,6 +1373,7 @@ export function ReportView({
               <CardContent className="p-6">
                 <FindingsTable
                   findings={normalizedFindings.filter((f) => f.type === "security")}
+                  scanId={scanId}
                 />
               </CardContent>
             </Card>
@@ -1408,6 +1411,7 @@ export function ReportView({
               <CardContent>
                 <FindingsTable
                   findings={normalizedFindings.filter((f) => f.type === "complexity")}
+                  scanId={scanId}
                 />
               </CardContent>
             </Card>
@@ -1419,6 +1423,11 @@ export function ReportView({
             title="Architecture Explorer"
             description="Detailed architecture hotspots, coupling pressure, and boundaries."
           >
+            <ArchitectureGraphVisualizer
+              architecture={results.architecture}
+              fileFeatureSummary={results.file_feature_summary}
+            />
+
             <div className="grid gap-4 xl:grid-cols-2">
               {directoryHotspotItems.length ? (
                 <InsightListCard

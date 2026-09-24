@@ -309,6 +309,9 @@ export type ScanResults = {
 
   fixSuggestions?: FixSuggestion[]
   refactorPriority?: RefactorPriorityItem[]
+
+  file_feature_summary?: any
+  file_features?: any[]
 }
 
 export type ScanResultsResponse = {
@@ -563,3 +566,29 @@ export function getTeamOverview(trendDays = 14, latestLimit = 10) {
     { method: "GET" }
   )
 }
+
+export type AiFixResponse = {
+  success: boolean
+  explanation: string
+  beforeCode: string
+  afterCode: string
+  gitDiff: string
+  safetyImpact: string
+  source: string
+}
+
+export function generateFindingAiFix(
+  scanId: string,
+  payload: {
+    ruleId?: string
+    title: string
+    message?: string
+    filePath?: string
+    snippet?: string
+  }
+) {
+  return request<AiFixResponse>(`/api/scans/${scanId}/findings/ai-fix`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}

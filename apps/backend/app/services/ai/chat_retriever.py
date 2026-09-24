@@ -118,12 +118,28 @@ INTENT_PATTERNS: list[tuple[str, list[str]]] = [
             "tell me about this repo",
             "what is going on here",
             "how does this repo look",
+            "what language",
+            "languages",
+            "what is in this repo",
+            "what is there in this repo",
+            "tech stack",
+            "stack",
+            "technologies",
+            "framework",
+            "frameworks",
         ],
     ),
 ]
 
 
 KEYWORD_SECTION_MAP = {
+    "language": ["file_feature_summary", "architecture.summary", "ai.summary", "ai.simpleSummary"],
+    "languages": ["file_feature_summary", "architecture.summary", "ai.summary", "ai.simpleSummary"],
+    "stack": ["file_feature_summary", "architecture.summary", "ai.summary", "ai.simpleSummary"],
+    "framework": ["architecture.summary", "file_feature_summary", "ai.summary"],
+    "frameworks": ["architecture.summary", "file_feature_summary", "ai.summary"],
+    "technology": ["file_feature_summary", "architecture.summary", "ai.summary"],
+    "technologies": ["file_feature_summary", "architecture.summary", "ai.summary"],
     "risk": ["ai.riskExplanation", "risk_summary", "ml.summary", "top_files_to_fix", "findings"],
     "risky": ["ai.riskExplanation", "risk_summary", "ml.summary", "top_files_to_fix", "findings"],
     "security": ["findings", "fix_suggestions", "risk_summary"],
@@ -135,10 +151,10 @@ KEYWORD_SECTION_MAP = {
     "boundary": ["architecture.boundaryWarnings", "architecture.summary", "architecture.recommendations"],
     "refactor": ["top_files_to_fix", "ai.refactorPlan", "fix_suggestions"],
     "fix": ["top_files_to_fix", "fix_suggestions", "ai.refactorPlan", "findings"],
-    "files": ["top_files_to_fix", "findings", "fix_suggestions", "architecture.couplingHotspots"],
+    "files": ["top_files_to_fix", "findings", "fix_suggestions", "architecture.couplingHotspots", "file_feature_summary"],
     "start": ["top_files_to_fix", "fix_suggestions", "ai.refactorPlan"],
-    "summary": ["ai.summary", "ai.simpleSummary", "ml.summary", "architecture.summary"],
-    "overview": ["ai.summary", "ai.simpleSummary", "ml.summary", "architecture.summary"],
+    "summary": ["ai.summary", "ai.simpleSummary", "ml.summary", "architecture.summary", "file_feature_summary"],
+    "overview": ["ai.summary", "ai.simpleSummary", "ml.summary", "architecture.summary", "file_feature_summary"],
     "debt": ["ml.summary", "ai.riskExplanation", "top_files_to_fix"],
     "quality": ["findings", "top_files_to_fix", "ml.summary"],
     "auth": ["findings", "top_files_to_fix", "fix_suggestions"],
@@ -322,10 +338,16 @@ def _repo_overview(result_json: dict[str, Any]) -> dict[str, Any]:
     health_score = _safe_float(result_json.get("healthScore"), 0.0)
     grade = _safe_str(result_json.get("grade"), "N/A")
 
+    file_feature_summary = _safe_dict(result_json.get("file_feature_summary"))
+    files_by_lang = _safe_list(file_feature_summary.get("filesByLanguage"))
+    languages_str = ", ".join([f"{item.get('name')} ({item.get('count')} files)" for item in files_by_lang[:5]]) if files_by_lang else "Not detected"
+
     return {
         "healthScore": health_score,
         "grade": grade,
         "totalFindings": len(findings),
+        "totalFiles": _safe_int(file_feature_summary.get("totalFilesProfiled"), 0),
+        "languages": languages_str,
         "criticalCount": _safe_int(by_severity.get("critical"), 0),
         "highCount": _safe_int(by_severity.get("high"), 0),
         "mediumCount": _safe_int(by_severity.get("medium"), 0),
@@ -446,6 +468,21 @@ def _collect_evidence(result_json: dict[str, Any], matched_sections: list[str]) 
                 label="AI Risk Explanation",
                 section="ai.riskExplanation",
                 reason="matched risk explanation",
+            )
+
+    if "file_feature_summary" in matched_sections:
+        file_feature_summary = _safe_dict(result_json.get("file_feature_summary"))
+        files_by_lang = _safe_list(file_feature_summary.get("filesByLanguage"))
+        total_files = file_feature_summary.get("totalFilesProfiled", 0)
+        langs = [f"{item.get('name')}: {item.get('count')} files" for item in files_by_lang if item.get("name")]
+        if langs:
+            evidence.append(f"Repository languages and file distribution: {', '.join(langs)}. Total files profiled: {total_files}.")
+            _append_citation(
+                citations,
+                citation_type="section",
+                label="Languages and File Profile",
+                section="file_feature_summary",
+                reason="matched repository languages and tech stack",
             )
 
     if "ml.summary" in matched_sections:

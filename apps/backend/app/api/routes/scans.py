@@ -158,3 +158,32 @@ def chat_with_scan_endpoint(
         "matchedSections": retrieval["matchedSections"],
         "confidence": retrieval["confidence"],
     }
+
+
+@router.post("/{scan_id}/findings/ai-fix")
+def generate_finding_fix_endpoint(
+    scan_id: uuid.UUID,
+    payload: dict,
+    db: Session = Depends(get_db),
+):
+    scan = get_scan(db, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    from app.services.ai.fix_generator import generate_ai_fix_diff
+
+    rule_id = payload.get("ruleId")
+    finding_title = payload.get("title") or "Code finding"
+    finding_message = payload.get("message")
+    file_path = payload.get("filePath") or "source.py"
+    snippet = payload.get("snippet")
+
+    fix = generate_ai_fix_diff(
+        rule_id=rule_id,
+        finding_title=finding_title,
+        finding_message=finding_message,
+        file_path=file_path,
+        snippet=snippet,
+    )
+
+    return fix

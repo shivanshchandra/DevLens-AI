@@ -131,17 +131,17 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="relative flex min-h-screen">
         <aside className="hidden w-72 border-r border-white/10 bg-black/40 backdrop-blur-xl md:flex md:flex-col">
           <div className="border-b border-white/10 px-5 py-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 shadow-inner shadow-white/5">
-                <span className="text-sm font-semibold tracking-wide">N</span>
+            <Link href="/" className="flex items-center gap-3 group">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/20 to-cyan-500/10 text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.2)] group-hover:scale-105 transition-all">
+                <Sparkles className="h-5 w-5" />
               </div>
               <div>
-                <div className="text-lg font-semibold tracking-tight text-white">
-                  DevLens AI
+                <div className="text-lg font-bold tracking-tight text-white flex items-center gap-1.5">
+                  DevLens <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">AI</span>
                 </div>
-                <div className="text-xs text-zinc-400">Developer Intelligence</div>
+                <div className="text-[11px] text-zinc-400">Architectural & Security Audit</div>
               </div>
-            </div>
+            </Link>
           </div>
 
           <div className="flex-1 px-4 py-4">
