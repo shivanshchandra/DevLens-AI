@@ -20,19 +20,28 @@ router = APIRouter(prefix="/scans", tags=["scans"])
 
 @router.post("", response_model=ScanOut)
 def create_scan_endpoint(payload: ScanCreate, db: Session = Depends(get_db)):
-    scan = create_scan(
-        db=db,
-        source_type=payload.source_type,
-        repo_url=payload.repo_url,
-        pr_number=payload.pr_number,
-        ref=payload.ref,
-    )
+    try:
+        scan = create_scan(
+            db=db,
+            source_type=payload.source_type,
+            repo_url=payload.repo_url,
+            pr_number=payload.pr_number,
+            ref=payload.ref,
+        )
+    except Exception as e:
+        print(f"Error creating scan record in database: {e}", flush=True)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-    from app.worker.queue import get_queue
-    from app.worker.jobs import run_scan_job
+    try:
+        from app.worker.queue import get_queue
+        from app.worker.jobs import run_scan_job
 
-    q = get_queue()
-    q.enqueue(run_scan_job, str(scan.id), job_timeout=900)
+        q = get_queue()
+        q.enqueue(run_scan_job, str(scan.id), job_timeout=900)
+    except Exception as e:
+        print(f"Error enqueueing scan to Redis queue: {e}", flush=True)
+        # Even if queue enqueue fails, scan record is created
+        raise HTTPException(status_code=500, detail=f"Queue error: {str(e)}")
 
     return scan
 

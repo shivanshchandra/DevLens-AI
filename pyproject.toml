@@ -1,14 +1,16 @@
 [tool.pyrefly]
 search-path = [
     ".",
-    "app"
+    "apps/backend",
+    "apps/backend/app"
 ]
 errors = { missing-import = false }
 
 [tool.pyright]
 extraPaths = [
     ".",
-    "app"
+    "apps/backend",
+    "apps/backend/app"
 ]
 reportMissingImports = false
 reportMissingTypeStubs = false

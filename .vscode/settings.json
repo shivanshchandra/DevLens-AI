@@ -3,5 +3,11 @@
     {
       "mode": "auto"
     }
+  ],
+  "python.analysis.extraPaths": [
+    "./apps/backend"
+  ],
+  "python.autoComplete.extraPaths": [
+    "./apps/backend"
   ]
 }

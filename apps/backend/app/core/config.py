@@ -1,23 +1,42 @@
 import os
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def _pick_env_file() -> str:
+def _pick_env_file() -> str | None:
     """
     Choose which env file to load.
     Priority:
     1) ENV_FILE if explicitly set
-    2) if ENV=docker -> .env.docker
-    3) else -> .env.local
+    2) if ENV=production -> None (use system environment variables directly)
+    3) if ENV=docker -> .env.docker
+    4) else -> .env.local
     """
     explicit = os.getenv("ENV_FILE")
     if explicit:
         return explicit
 
     env = os.getenv("ENV", "local").lower()
-    if env == "docker":
-        return ".env.docker"
-    return ".env.local"
+    if env == "production":
+        return None
+
+    filename = ".env.docker" if env == "docker" else ".env.local"
+
+    cwd_candidate = Path.cwd() / filename
+    if cwd_candidate.is_file():
+        return str(cwd_candidate)
+
+    backend_dir = Path(__file__).resolve().parent.parent.parent
+    backend_candidate = backend_dir / filename
+    if backend_candidate.is_file():
+        return str(backend_candidate)
+
+    if (Path.cwd() / ".env").is_file():
+        return str(Path.cwd() / ".env")
+    if (backend_dir / ".env").is_file():
+        return str(backend_dir / ".env")
+
+    return filename
 
 
 class Settings(BaseSettings):
